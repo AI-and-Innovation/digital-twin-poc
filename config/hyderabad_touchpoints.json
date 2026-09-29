@@ -1,0 +1,989 @@
+{
+  "airport_id": "HYD",
+  "airport_name": "Rajiv Gandhi International Airport, Hyderabad",
+  "scope": "Passenger processing and assistance touchpoints: departures, arrivals, transfers and general aviation; excludes retail, dining and landside transport.",
+  "limitations": [
+    "Public-source starter inventory, not an exhaustive verified register of every counter, gate or lane. Request the airport operational asset inventory for complete physical coverage.",
+    "All SYN IDs, zone identifiers, domestic/international group splits, arrival rates, channel counts and service durations are POC assumptions.",
+    "Published pages can change and contain inconsistent details; no physical counter totals or gate numbering ranges have been inferred.",
+    "Service channels in the simulator are parallel service slots, not asserted counts of airport counters; baggage reclaim uses an approximate service-delay model.",
+    "Queue groups are independent and do not conserve passengers across the airport journey. Summing group arrivals is not airport throughput.",
+    "Disabled candidate entries require confirmation before use. Other optional commercial amenities are outside passenger-processing scope."
+  ],
+  "sources": [
+    {
+      "source_id": "facilities",
+      "url": "https://www.hyderabad.aero/rgia",
+      "title": "RGIA terminal facilities",
+      "accessed_on": "2026-09-29"
+    },
+    {
+      "source_id": "queue_tracker",
+      "url": "https://www.hyderabad.aero/?prophazecheck=4",
+      "title": "RGIA homepage passenger queue categories",
+      "accessed_on": "2026-09-29"
+    },
+    {
+      "source_id": "faq",
+      "url": "https://www.hyderabad.aero/travellers/faqs",
+      "title": "RGIA passenger FAQs",
+      "accessed_on": "2026-09-29"
+    },
+    {
+      "source_id": "self_service",
+      "url": "https://www.hyderabad.aero/rgia/airport-facilities/self-check-in",
+      "title": "Self check-in and baggage services",
+      "accessed_on": "2026-09-29"
+    },
+    {
+      "source_id": "cityside",
+      "url": "https://www.hyderabad.aero/rgia/airport-facilities/cityside-check-in",
+      "title": "City-side check-in",
+      "accessed_on": "2026-09-29"
+    },
+    {
+      "source_id": "advisory",
+      "url": "https://www.hyderabad.aero/passenger-advisory",
+      "title": "Passenger advisory and DigiYatra",
+      "accessed_on": "2026-09-29"
+    },
+    {
+      "source_id": "helpdesks",
+      "url": "https://www.hyderabad.aero/rgia/airport-facilities/virtual-helpdesk",
+      "title": "Virtual helpdesk locations",
+      "accessed_on": "2026-09-29"
+    },
+    {
+      "source_id": "ga",
+      "url": "https://www.hyderabad.aero/rgia/airport-facilities/general-aviation",
+      "title": "General aviation terminal facilities",
+      "accessed_on": "2026-09-29"
+    }
+  ],
+  "touchpoints": [
+    {
+      "touchpoint_id": "SYN-HYD-ENTRY",
+      "name": "Terminal entry document checks",
+      "touchpoint_type": "entry",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-DEPARTURES",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "queue_tracker"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 1800,
+        "service_channels": 8,
+        "service_time_min_seconds": 8,
+        "service_time_max_seconds": 20,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-DIGIYATRA-ENTRY",
+      "name": "DigiYatra terminal entry",
+      "touchpoint_type": "entry",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-DEPARTURES",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "advisory"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 900,
+        "service_channels": 4,
+        "service_time_min_seconds": 4,
+        "service_time_max_seconds": 10,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-PRM-ENTRY",
+      "name": "Priority entry for reduced-mobility passengers",
+      "touchpoint_type": "entry",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-DEPARTURES",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "faq"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 30,
+        "service_channels": 1,
+        "service_time_min_seconds": 15,
+        "service_time_max_seconds": 45,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-CHECKIN-DOM",
+      "name": "Domestic airline check-in counters",
+      "touchpoint_type": "check_in",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-CHECKIN",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "self_service"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 900,
+        "service_channels": 20,
+        "service_time_min_seconds": 45,
+        "service_time_max_seconds": 100,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-CHECKIN-INT",
+      "name": "International airline check-in counters",
+      "touchpoint_type": "check_in",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-CHECKIN",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "self_service"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 400,
+        "service_channels": 14,
+        "service_time_min_seconds": 60,
+        "service_time_max_seconds": 150,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-KIOSK-DOM",
+      "name": "Domestic self-check-in kiosks",
+      "touchpoint_type": "self_check_in",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-CHECKIN",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "self_service"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 300,
+        "service_channels": 8,
+        "service_time_min_seconds": 30,
+        "service_time_max_seconds": 75,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-KIOSK-INT",
+      "name": "International self-check-in kiosks",
+      "touchpoint_type": "self_check_in",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-CHECKIN",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "self_service"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 120,
+        "service_channels": 4,
+        "service_time_min_seconds": 40,
+        "service_time_max_seconds": 90,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-BAGDROP-DOM",
+      "name": "Domestic self-baggage drop",
+      "touchpoint_type": "bag_drop",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-CHECKIN",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "self_service"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 360,
+        "service_channels": 10,
+        "service_time_min_seconds": 30,
+        "service_time_max_seconds": 80,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-BAGDROP-INT",
+      "name": "International self-baggage drop",
+      "touchpoint_type": "bag_drop",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-CHECKIN",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "self_service"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 140,
+        "service_channels": 5,
+        "service_time_min_seconds": 40,
+        "service_time_max_seconds": 90,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-CITY-CHECKIN",
+      "name": "City-side check-in near car park / J Pod",
+      "touchpoint_type": "check_in",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-CITYSIDE",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "cityside"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 120,
+        "service_channels": 4,
+        "service_time_min_seconds": 30,
+        "service_time_max_seconds": 80,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-CITY-BAGDROP",
+      "name": "City-side baggage drop",
+      "touchpoint_type": "bag_drop",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-CITYSIDE",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "cityside"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 90,
+        "service_channels": 3,
+        "service_time_min_seconds": 30,
+        "service_time_max_seconds": 90,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-SECURITY-DOM",
+      "name": "Domestic security screening",
+      "touchpoint_type": "security",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-SECURITY-DOM",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "queue_tracker"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 1600,
+        "service_channels": 20,
+        "service_time_min_seconds": 20,
+        "service_time_max_seconds": 55,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-SECURITY-INT",
+      "name": "International security screening",
+      "touchpoint_type": "security",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-SECURITY-INT",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "queue_tracker"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 650,
+        "service_channels": 10,
+        "service_time_min_seconds": 25,
+        "service_time_max_seconds": 60,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-SECURITY-PRM",
+      "name": "Priority security lane",
+      "touchpoint_type": "security",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-SECURITY",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "faq"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 25,
+        "service_channels": 1,
+        "service_time_min_seconds": 30,
+        "service_time_max_seconds": 80,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-EMIGRATION",
+      "name": "Departure emigration counters",
+      "touchpoint_type": "emigration",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-INT-DEPARTURES",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "facilities"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 550,
+        "service_channels": 16,
+        "service_time_min_seconds": 40,
+        "service_time_max_seconds": 100,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-EMIGRATION-EGATE",
+      "name": "Departure FTI-TTP e-gates",
+      "touchpoint_type": "emigration",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-INT-DEPARTURES",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "facilities"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 120,
+        "service_channels": 3,
+        "service_time_min_seconds": 10,
+        "service_time_max_seconds": 25,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-EMIGRATION-PRM",
+      "name": "Priority emigration counter",
+      "touchpoint_type": "emigration",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-INT-DEPARTURES",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "faq"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 15,
+        "service_channels": 1,
+        "service_time_min_seconds": 40,
+        "service_time_max_seconds": 100,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-BOARDING-DOM",
+      "name": "Domestic boarding process",
+      "touchpoint_type": "boarding",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-DOM-DEPARTURES",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "helpdesks"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 1500,
+        "service_channels": 12,
+        "service_time_min_seconds": 5,
+        "service_time_max_seconds": 15,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-BOARDING-INT",
+      "name": "International boarding process",
+      "touchpoint_type": "boarding",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-INT-DEPARTURES",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "helpdesks"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 600,
+        "service_channels": 6,
+        "service_time_min_seconds": 8,
+        "service_time_max_seconds": 20,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-IMMIGRATION",
+      "name": "Arrival immigration counters",
+      "touchpoint_type": "immigration",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-INT-ARRIVALS",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "facilities"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 600,
+        "service_channels": 16,
+        "service_time_min_seconds": 40,
+        "service_time_max_seconds": 100,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-IMMIGRATION-EGATE",
+      "name": "Arrival FTI-TTP e-gates",
+      "touchpoint_type": "immigration",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-INT-ARRIVALS",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "facilities"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 120,
+        "service_channels": 3,
+        "service_time_min_seconds": 10,
+        "service_time_max_seconds": 25,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-RECLAIM-DOM",
+      "name": "Domestic baggage reclaim",
+      "touchpoint_type": "baggage_reclaim",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-DOM-ARRIVALS",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "faq"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 1200,
+        "service_channels": 100,
+        "service_time_min_seconds": 120,
+        "service_time_max_seconds": 300,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-RECLAIM-INT",
+      "name": "International baggage reclaim",
+      "touchpoint_type": "baggage_reclaim",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-INT-ARRIVALS",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "faq"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 450,
+        "service_channels": 50,
+        "service_time_min_seconds": 180,
+        "service_time_max_seconds": 360,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-TRANSFER-DOM",
+      "name": "Domestic transfer processing",
+      "touchpoint_type": "transfer",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-DOM-TRANSFER",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "helpdesks"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 180,
+        "service_channels": 5,
+        "service_time_min_seconds": 25,
+        "service_time_max_seconds": 60,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-TRANSFER-DI",
+      "name": "Domestic-to-international transfer processing",
+      "touchpoint_type": "transfer",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-TRANSFER",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "faq"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 90,
+        "service_channels": 4,
+        "service_time_min_seconds": 40,
+        "service_time_max_seconds": 100,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-INFO-G",
+      "name": "Departure information desk at check-in Row G",
+      "touchpoint_type": "information",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-CHECKIN",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "faq"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 30,
+        "service_channels": 2,
+        "service_time_min_seconds": 30,
+        "service_time_max_seconds": 120,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-INFO-P",
+      "name": "Departure information desk at check-in Row P",
+      "touchpoint_type": "information",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-CHECKIN",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "faq"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 30,
+        "service_channels": 2,
+        "service_time_min_seconds": 30,
+        "service_time_max_seconds": 120,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-INFO-ARR",
+      "name": "Arrival information desk opposite belt 11",
+      "touchpoint_type": "information",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-ARRIVALS",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "faq"
+      ],
+      "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
+      "simulation": {
+        "arrival_rate_per_hour": 30,
+        "service_channels": 2,
+        "service_time_min_seconds": 30,
+        "service_time_max_seconds": 120,
+        "initial_queue_length": 5
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-VID-01",
+      "name": "Virtual helpdesk: Check-in hall near Entry Gate 5",
+      "touchpoint_type": "information",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-VID-01",
+      "enabled": true,
+      "inventory_level": "published_location",
+      "verification_status": "published_location_synthetic_id",
+      "source_refs": [
+        "helpdesks"
+      ],
+      "notes": "Published location; kiosk ID and all queue parameters are synthetic.",
+      "simulation": {
+        "arrival_rate_per_hour": 12,
+        "service_channels": 1,
+        "service_time_min_seconds": 20,
+        "service_time_max_seconds": 90,
+        "initial_queue_length": 0
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-VID-02",
+      "name": "Virtual helpdesk: Check-in hall near Entry Gate 8",
+      "touchpoint_type": "information",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-VID-02",
+      "enabled": true,
+      "inventory_level": "published_location",
+      "verification_status": "published_location_synthetic_id",
+      "source_refs": [
+        "helpdesks"
+      ],
+      "notes": "Published location; kiosk ID and all queue parameters are synthetic.",
+      "simulation": {
+        "arrival_rate_per_hour": 12,
+        "service_channels": 1,
+        "service_time_min_seconds": 20,
+        "service_time_max_seconds": 90,
+        "initial_queue_length": 0
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-VID-03",
+      "name": "Virtual helpdesk: Domestic near Boarding Gate 21",
+      "touchpoint_type": "information",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-VID-03",
+      "enabled": true,
+      "inventory_level": "published_location",
+      "verification_status": "published_location_synthetic_id",
+      "source_refs": [
+        "helpdesks"
+      ],
+      "notes": "Published location; kiosk ID and all queue parameters are synthetic.",
+      "simulation": {
+        "arrival_rate_per_hour": 12,
+        "service_channels": 1,
+        "service_time_min_seconds": 20,
+        "service_time_max_seconds": 90,
+        "initial_queue_length": 0
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-VID-04",
+      "name": "Virtual helpdesk: Domestic transfer zone",
+      "touchpoint_type": "information",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-VID-04",
+      "enabled": true,
+      "inventory_level": "published_location",
+      "verification_status": "published_location_synthetic_id",
+      "source_refs": [
+        "helpdesks"
+      ],
+      "notes": "Published location; kiosk ID and all queue parameters are synthetic.",
+      "simulation": {
+        "arrival_rate_per_hour": 12,
+        "service_channels": 1,
+        "service_time_min_seconds": 20,
+        "service_time_max_seconds": 90,
+        "initial_queue_length": 0
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-VID-05",
+      "name": "Virtual helpdesk: Domestic arrivals baggage claim",
+      "touchpoint_type": "information",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-VID-05",
+      "enabled": true,
+      "inventory_level": "published_location",
+      "verification_status": "published_location_synthetic_id",
+      "source_refs": [
+        "helpdesks"
+      ],
+      "notes": "Published location; kiosk ID and all queue parameters are synthetic.",
+      "simulation": {
+        "arrival_rate_per_hour": 12,
+        "service_channels": 1,
+        "service_time_min_seconds": 20,
+        "service_time_max_seconds": 90,
+        "initial_queue_length": 0
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-VID-06",
+      "name": "Virtual helpdesk: International near Boarding Gate 24",
+      "touchpoint_type": "information",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-VID-06",
+      "enabled": true,
+      "inventory_level": "published_location",
+      "verification_status": "published_location_synthetic_id",
+      "source_refs": [
+        "helpdesks"
+      ],
+      "notes": "Published location; kiosk ID and all queue parameters are synthetic.",
+      "simulation": {
+        "arrival_rate_per_hour": 12,
+        "service_channels": 1,
+        "service_time_min_seconds": 20,
+        "service_time_max_seconds": 90,
+        "initial_queue_length": 0
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-VID-07",
+      "name": "Virtual helpdesk: International near Boarding Gate 26",
+      "touchpoint_type": "information",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-VID-07",
+      "enabled": true,
+      "inventory_level": "published_location",
+      "verification_status": "published_location_synthetic_id",
+      "source_refs": [
+        "helpdesks"
+      ],
+      "notes": "Published location; kiosk ID and all queue parameters are synthetic.",
+      "simulation": {
+        "arrival_rate_per_hour": 12,
+        "service_channels": 1,
+        "service_time_min_seconds": 20,
+        "service_time_max_seconds": 90,
+        "initial_queue_length": 0
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-GA-CHECK-IN",
+      "name": "General aviation check in",
+      "touchpoint_type": "check_in",
+      "terminal_id": "HYD-GA",
+      "zone_id": "SYN-HYD-ZONE-GA",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "ga"
+      ],
+      "notes": "Published GA process; synthetic capacity and demand.",
+      "simulation": {
+        "arrival_rate_per_hour": 6,
+        "service_channels": 1,
+        "service_time_min_seconds": 30,
+        "service_time_max_seconds": 90,
+        "initial_queue_length": 0
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-GA-SECURITY",
+      "name": "General aviation security",
+      "touchpoint_type": "security",
+      "terminal_id": "HYD-GA",
+      "zone_id": "SYN-HYD-ZONE-GA",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "ga"
+      ],
+      "notes": "Published GA process; synthetic capacity and demand.",
+      "simulation": {
+        "arrival_rate_per_hour": 6,
+        "service_channels": 1,
+        "service_time_min_seconds": 30,
+        "service_time_max_seconds": 90,
+        "initial_queue_length": 0
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-GA-EMIGRATION",
+      "name": "General aviation emigration",
+      "touchpoint_type": "emigration",
+      "terminal_id": "HYD-GA",
+      "zone_id": "SYN-HYD-ZONE-GA",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "ga"
+      ],
+      "notes": "Published GA process; synthetic capacity and demand.",
+      "simulation": {
+        "arrival_rate_per_hour": 6,
+        "service_channels": 1,
+        "service_time_min_seconds": 30,
+        "service_time_max_seconds": 90,
+        "initial_queue_length": 0
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-GA-IMMIGRATION",
+      "name": "General aviation immigration",
+      "touchpoint_type": "immigration",
+      "terminal_id": "HYD-GA",
+      "zone_id": "SYN-HYD-ZONE-GA",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "ga"
+      ],
+      "notes": "Published GA process; synthetic capacity and demand.",
+      "simulation": {
+        "arrival_rate_per_hour": 6,
+        "service_channels": 1,
+        "service_time_min_seconds": 30,
+        "service_time_max_seconds": 90,
+        "initial_queue_length": 0
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-GA-CUSTOMS",
+      "name": "General aviation customs",
+      "touchpoint_type": "customs",
+      "terminal_id": "HYD-GA",
+      "zone_id": "SYN-HYD-ZONE-GA",
+      "enabled": true,
+      "inventory_level": "process_group",
+      "verification_status": "published_process_synthetic_grouping",
+      "source_refs": [
+        "ga"
+      ],
+      "notes": "Published GA process; synthetic capacity and demand.",
+      "simulation": {
+        "arrival_rate_per_hour": 6,
+        "service_channels": 1,
+        "service_time_min_seconds": 30,
+        "service_time_max_seconds": 90,
+        "initial_queue_length": 0
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-CUSTOMS-RED",
+      "name": "Main-terminal customs red channel",
+      "touchpoint_type": "customs",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-TO-CONFIRM",
+      "enabled": false,
+      "inventory_level": "candidate_process_group",
+      "verification_status": "requires_airport_confirmation",
+      "source_refs": [
+        "facilities"
+      ],
+      "notes": "Candidate for airport review only. Source provides airport context, not confirmation of this specific channel/location. Enable after verification.",
+      "simulation": {
+        "arrival_rate_per_hour": 120,
+        "service_channels": 4,
+        "service_time_min_seconds": 15,
+        "service_time_max_seconds": 45,
+        "initial_queue_length": 0
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-CUSTOMS-GREEN",
+      "name": "Main-terminal customs green channel",
+      "touchpoint_type": "customs",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-TO-CONFIRM",
+      "enabled": false,
+      "inventory_level": "candidate_process_group",
+      "verification_status": "requires_airport_confirmation",
+      "source_refs": [
+        "facilities"
+      ],
+      "notes": "Candidate for airport review only. Source provides airport context, not confirmation of this specific channel/location. Enable after verification.",
+      "simulation": {
+        "arrival_rate_per_hour": 120,
+        "service_channels": 4,
+        "service_time_min_seconds": 15,
+        "service_time_max_seconds": 45,
+        "initial_queue_length": 0
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-TRANSFER-II",
+      "name": "International-to-international transfer",
+      "touchpoint_type": "transfer",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-TO-CONFIRM",
+      "enabled": false,
+      "inventory_level": "candidate_process_group",
+      "verification_status": "requires_airport_confirmation",
+      "source_refs": [
+        "facilities"
+      ],
+      "notes": "Candidate for airport review only. Source provides airport context, not confirmation of this specific channel/location. Enable after verification.",
+      "simulation": {
+        "arrival_rate_per_hour": 120,
+        "service_channels": 4,
+        "service_time_min_seconds": 15,
+        "service_time_max_seconds": 45,
+        "initial_queue_length": 0
+      }
+    },
+    {
+      "touchpoint_id": "SYN-HYD-EXIT",
+      "name": "Arrival exit flow",
+      "touchpoint_type": "exit",
+      "terminal_id": "HYD-MAIN",
+      "zone_id": "SYN-HYD-ZONE-TO-CONFIRM",
+      "enabled": false,
+      "inventory_level": "candidate_process_group",
+      "verification_status": "requires_airport_confirmation",
+      "source_refs": [
+        "facilities"
+      ],
+      "notes": "Candidate for airport review only. Source provides airport context, not confirmation of this specific channel/location. Enable after verification.",
+      "simulation": {
+        "arrival_rate_per_hour": 120,
+        "service_channels": 4,
+        "service_time_min_seconds": 15,
+        "service_time_max_seconds": 45,
+        "initial_queue_length": 0
+      }
+    }
+  ]
+}

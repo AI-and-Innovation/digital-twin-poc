@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from .common import load_summary
 from .config import load_config
 from .models import EventEnvelope
+from .generators.passenger_touchpoint import write_dataset
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -20,8 +21,8 @@ def main(argv: list[str] | None = None) -> int:
     sample_parser = sub.add_parser("validate-samples")
     sample_parser.add_argument("path", nargs="?", default="samples")
     generate_parser = sub.add_parser("generate")
-    generate_parser.add_argument("stream", choices=["facility", "passenger", "airport_operations", "aircraft"])
-    generate_parser.add_argument("--config", default="config/poc.json")
+    generate_parser.add_argument("stream", choices=["passenger_touchpoint", "facility", "passenger", "airport_operations", "aircraft"])
+    generate_parser.add_argument("--config", help="Run config; defaults depend on the selected stream")
     args = parser.parse_args(argv)
     try:
         if args.command == "validate-config":
@@ -34,8 +35,11 @@ def main(argv: list[str] | None = None) -> int:
             for path in paths:
                 EventEnvelope.model_validate_json(path.read_text(encoding="utf-8"))
             print(f"Validated {len(paths)} sample events")
+        elif args.stream == "passenger_touchpoint":
+            path, count = write_dataset(args.config or "config/passenger_touchpoint.json")
+            print(f"Generated {count} events in {path}")
         else:
-            load_config(args.config)
+            load_config(args.config or "config/poc.json")
             raise NotImplementedError(f"{args.stream} generator is a scaffold; simulation is not implemented")
     except (OSError, ValueError, ValidationError, NotImplementedError) as exc:
         print(str(exc), file=sys.stderr)

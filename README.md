@@ -2,9 +2,68 @@
 
 Python starter contracts for comparing Unreal and ArcGIS as airport digital twin
 visualization clients. The intended streams cover facility/MEP telemetry, passenger
-tracking and heatmaps, AODB, RMS, A-CDM, and aircraft movements. **This is a scaffold,
-not a simulator or a tested high-volume publisher.** No realistic trajectories,
-queueing, sensor dynamics, Kafka networking, or visualization adapters are implemented.
+tracking and heatmaps, AODB, RMS, A-CDM, and aircraft movements. **Passenger
+touchpoint queue generation is implemented; other generators remain scaffolds.**
+No realistic trajectories, sensor dynamics, Kafka networking, or visualization
+adapters are implemented. The queue model is synthetic and not airport-calibrated.
+
+## Generate passenger touchpoint data
+
+```powershell
+python -m airport_eye generate passenger_touchpoint --config config/passenger_touchpoint.json
+```
+
+After installation (see below), this writes `generated_data/passenger_touchpoint.jsonl`:
+one complete JSON event per line, one file for this template across all touchpoints.
+Other template files will be produced when their generators are implemented.
+The default run covers 08:00–09:00 India time on 29 September 2026 in 60-second
+windows: 40 enabled touchpoints × 60 windows = 2,400 events. This is offline
+generation; it does not sleep for a minute between records. Reruns replace this
+template's previous dataset atomically and leave other template files unchanged.
+
+Edit these files:
+
+- `config/hyderabad_touchpoints.json`: add, remove or modify touchpoint objects;
+  `enabled: false` excludes an entry. IDs must be unique. `touchpoint_type` is an
+  editable nonempty string, so adding a category does not require a code change.
+  Each entry includes source references and a `simulation` profile with arrival
+  rate/hour, parallel service channels, service duration range in seconds, and
+  initial passenger count waiting before service begins.
+- `config/passenger_touchpoint.json`: set `start_time`, `end_time`,
+  `interval_seconds` (default 60), and `seed`. Both times require timezone offsets;
+  output timestamps are UTC. Paths resolve relative to this configuration file.
+  Duration must be positive and a whole multiple of the interval. The first event
+  is at start + interval, the last at end; each measures `(window_start, window_end]`.
+  This dedicated run config is independent of the broader `config/poc.json` scaffold.
+
+The inventory covers passenger processing and assistance at Hyderabad RGIA,
+including main-terminal departures, arrivals, transfers, published virtual
+helpdesk locations, and general aviation. The editable source list records
+official airport pages and the research date. Core references include
+[RGIA facilities](https://www.hyderabad.aero/rgia),
+[self-service check-in](https://www.hyderabad.aero/rgia/airport-facilities/self-check-in),
+[passenger FAQs](https://www.hyderabad.aero/travellers/faqs),
+[helpdesk locations](https://www.hyderabad.aero/rgia/airport-facilities/virtual-helpdesk),
+and [general aviation](https://www.hyderabad.aero/rgia/airport-facilities/general-aviation).
+
+**This is a public-source process inventory, not a verified exhaustive register
+of individual lanes, gates or counters.** It has 44 entries: 40 enabled and four
+unverified candidates disabled pending airport confirmation. Commercial amenities
+and ground transport are outside its scope. Source pages do not establish every
+physical location or domestic/international subdivision used here. All `SYN-`
+IDs, zones, capacities and load profiles are synthetic assumptions. Replace or
+expand process groups with the airport's physical asset register when available.
+
+Each touchpoint has an independent FIFO queue, exponential interarrival times
+(Poisson arrivals), and uniformly distributed service durations. Queue and service
+states persist across windows. Wait/service averages use only passengers who
+completed service in the current window; both are null for zero completions.
+Initial passengers enter at the run start, so initial service slots fill immediately;
+there is no pre-run warm-up. `ingestion_time` equals simulated `event_time` for
+reproducible offline data, not measured wall-clock ingestion latency. Per-touchpoint
+random streams preserve values when other entries are added, removed or reordered.
+Baggage reclaim is a coarse service-delay approximation. Queues are not connected
+passenger journeys; their arrival counts must not be summed as airport throughput.
 
 ## Quick start
 
@@ -29,6 +88,9 @@ directory; pass explicit paths when running elsewhere. For source-only use set
 
 ```text
 config/poc.json                 Validated scale, update-rate and Kafka settings
+config/hyderabad_touchpoints.json Editable Hyderabad touchpoint catalog and sources
+config/passenger_touchpoint.json Touchpoint run dates, interval and paths
+generated_data/passenger_touchpoint.jsonl Generated touchpoint events
 samples/                        Complete envelope + payload JSON examples
   common_event_envelope.json     Same example as facility_telemetry.json
   asset_registry.json
@@ -50,10 +112,12 @@ src/airport_eye/
   generators/
     facility.py                 Registry/telemetry placeholder
     passenger.py                Touchpoint, track and aggregate placeholder
+    passenger_touchpoint.py     Stateful touchpoint queue generator
     airport_operations.py       AODB/RMS/A-CDM placeholder
     aircraft.py                 Aircraft movement placeholder
   publishers/kafka.py            Record preparation and transport placeholder
 tests/test_contracts.py          Executable contract checks and future test slots
+tests/test_passenger_touchpoint.py Queue, cadence, inventory and output checks
 .env.example                    Future publisher environment variables
 docker-compose.yml              Opt-in development Kafka template
 pyproject.toml                  Package metadata, CLI, optional Kafka dependency
@@ -131,8 +195,8 @@ telemetry example for documentation and should not be replayed as an extra event
 at `event_time`: passenger ID, synthetic PNR, flight ID, indoor x/y/z, floor, zone,
 grid, speed, heading and physical movement state (walking or stationary).
 
-`passenger.touchpoint` reports operational metrics for an entry, check-in or
-security touchpoint, keyed by touchpoint ID. It contains no individual passenger
+`passenger.touchpoint` reports operational metrics for a configured passenger
+touchpoint, keyed by touchpoint ID. It contains no individual passenger
 or flight identity. `queue_length` counts waiting passengers at `window_end`,
 excluding `passengers_in_service`. `processed_passengers` counts service
 completions in `(window_start, window_end]`. Average wait time measures queue entry

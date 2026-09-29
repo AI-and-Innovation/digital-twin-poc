@@ -70,7 +70,7 @@ class PassengerTouchpoint(Model):
     """Touchpoint queue snapshot and completed-service metrics for a time window."""
 
     touchpoint_id: NonEmpty
-    touchpoint_type: Literal["entry", "check_in", "security"]
+    touchpoint_type: NonEmpty  # Editable inventory taxonomy, including arrivals/transfers.
     zone_id: NonEmpty
     window_start: AwareDatetime
     window_end: AwareDatetime

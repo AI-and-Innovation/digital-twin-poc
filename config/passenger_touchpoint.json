@@ -1,0 +1,8 @@
+{
+  "start_time": "2026-09-29T08:00:00+05:30",
+  "end_time": "2026-09-29T09:00:00+05:30",
+  "interval_seconds": 60,
+  "seed": 42,
+  "inventory_file": "hyderabad_touchpoints.json",
+  "output_directory": "../generated_data"
+}
