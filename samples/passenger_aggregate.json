@@ -1,0 +1,28 @@
+{
+  "event_id": "00000000-0000-0000-0000-000000000006",
+  "event_type": "passenger.aggregate",
+  "schema_version": "1.0.0",
+  "airport_id": "SYN-AIRPORT-001",
+  "terminal_id": "SYN-T1",
+  "source_system": "synthetic-poc",
+  "entity_id": "SYN-ZONE-ENTRY",
+  "event_time": "2026-01-01T08:00:00Z",
+  "ingestion_time": "2026-01-01T08:00:00.010Z",
+  "sequence_no": 0,
+  "payload": {
+    "zone_id": "SYN-ZONE-ENTRY",
+    "coordinate_frame_id": "SYN-T1-LOCAL-METRES",
+    "floor": "L0",
+    "window_start": "2026-01-01T07:59:55Z",
+    "window_end": "2026-01-01T08:00:00Z",
+    "count_semantics": "snapshot_at_window_end",
+    "passenger_count": 1,
+    "cells": [
+      {
+        "grid_id": "SYN-GRID-5-3",
+        "passenger_count": 1,
+        "area_m2": 25.0
+      }
+    ]
+  }
+}

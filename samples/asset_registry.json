@@ -1,0 +1,35 @@
+{
+  "event_id": "00000000-0000-0000-0000-000000000001",
+  "event_type": "registry.asset",
+  "schema_version": "1.0.0",
+  "airport_id": "SYN-AIRPORT-001",
+  "terminal_id": "SYN-T1",
+  "source_system": "synthetic-poc",
+  "entity_id": "SYN-ASSET-AHU-001",
+  "event_time": "2026-01-01T08:00:00Z",
+  "ingestion_time": "2026-01-01T08:00:00.010Z",
+  "sequence_no": 0,
+  "payload": {
+    "asset_id": "SYN-ASSET-AHU-001",
+    "asset_type": "AHU",
+    "bim_element_id": "SYN-BIM-001",
+    "zone_id": "SYN-ZONE-ENTRY",
+    "gis_location_id": "SYN-GIS-001",
+    "indoor": {
+      "coordinate_frame_id": "SYN-T1-LOCAL-METRES",
+      "x": 25.0,
+      "y": 15.0,
+      "z": 0.0,
+      "floor": "L0",
+      "zone_id": "SYN-ZONE-ENTRY",
+      "grid_id": "SYN-GRID-5-3"
+    },
+    "outdoor": {
+      "lat": 0.001,
+      "lon": 0.001,
+      "altitude": 0.0,
+      "altitude_datum": "MSL",
+      "gis_location_id": "SYN-GIS-001"
+    }
+  }
+}

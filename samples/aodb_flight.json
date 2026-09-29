@@ -1,0 +1,24 @@
+{
+  "event_id": "00000000-0000-0000-0000-000000000007",
+  "event_type": "aodb.flight",
+  "schema_version": "1.0.0",
+  "airport_id": "SYN-AIRPORT-001",
+  "terminal_id": "SYN-T1",
+  "source_system": "synthetic-poc",
+  "entity_id": "SYN-FLIGHT-001",
+  "event_time": "2026-01-01T08:00:00Z",
+  "ingestion_time": "2026-01-01T08:00:00.010Z",
+  "sequence_no": 0,
+  "payload": {
+    "flight_id": "SYN-FLIGHT-001",
+    "flight_number": "SYN1001",
+    "aircraft_id": "SYN-AIRCRAFT-001",
+    "direction": "departure",
+    "origin_airport_id": "SYN-AIRPORT-001",
+    "destination_airport_id": "SYN-AIRPORT-002",
+    "scheduled_time": "2026-01-01T09:00:00Z",
+    "estimated_time": "2026-01-01T09:00:00Z",
+    "actual_time": null,
+    "status": "scheduled"
+  }
+}

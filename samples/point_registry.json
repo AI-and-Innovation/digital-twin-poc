@@ -1,0 +1,20 @@
+{
+  "event_id": "00000000-0000-0000-0000-000000000002",
+  "event_type": "registry.point",
+  "schema_version": "1.0.0",
+  "airport_id": "SYN-AIRPORT-001",
+  "terminal_id": "SYN-T1",
+  "source_system": "synthetic-poc",
+  "entity_id": "SYN-POINT-001",
+  "event_time": "2026-01-01T08:00:00Z",
+  "ingestion_time": "2026-01-01T08:00:00.010Z",
+  "sequence_no": 0,
+  "payload": {
+    "point_id": "SYN-POINT-001",
+    "asset_id": "SYN-ASSET-AHU-001",
+    "metric": "supply_air_temperature",
+    "value_type": "number",
+    "unit": "degC",
+    "nominal_update_hz": 0.1
+  }
+}

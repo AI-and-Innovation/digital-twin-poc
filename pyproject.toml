@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "airport-eye-poc"
+version = "0.1.0"
+description = "Synthetic airport digital twin data contracts and generator scaffold"
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2.8,<3"]
+
+[project.optional-dependencies]
+kafka = ["confluent-kafka>=2.5,<3"]
+
+[project.scripts]
+airport-eye = "airport_eye.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

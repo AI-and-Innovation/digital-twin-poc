@@ -1,0 +1,31 @@
+{
+  "event_id": "00000000-0000-0000-0000-00000000000a",
+  "event_type": "aircraft.position",
+  "schema_version": "1.0.0",
+  "airport_id": "SYN-AIRPORT-001",
+  "terminal_id": null,
+  "source_system": "synthetic-poc",
+  "entity_id": "SYN-AIRCRAFT-001",
+  "event_time": "2026-01-01T08:00:00Z",
+  "ingestion_time": "2026-01-01T08:00:00.010Z",
+  "sequence_no": 0,
+  "payload": {
+    "aircraft_id": "SYN-AIRCRAFT-001",
+    "flight_id": "SYN-FLIGHT-001",
+    "phase": "on_stand",
+    "outdoor": {
+      "lat": 0.001,
+      "lon": 0.001,
+      "altitude": 0.0,
+      "altitude_datum": "MSL",
+      "gis_location_id": "SYN-GIS-001"
+    },
+    "ground_speed_mps": 0.0,
+    "heading_deg": 90.0,
+    "vertical_speed_mps": 0.0,
+    "on_ground": true,
+    "runway_id": null,
+    "taxiway_id": null,
+    "stand_id": "SYN-STAND-001"
+  }
+}

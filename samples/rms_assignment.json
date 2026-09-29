@@ -1,0 +1,21 @@
+{
+  "event_id": "00000000-0000-0000-0000-000000000008",
+  "event_type": "rms.assignment",
+  "schema_version": "1.0.0",
+  "airport_id": "SYN-AIRPORT-001",
+  "terminal_id": "SYN-T1",
+  "source_system": "synthetic-poc",
+  "entity_id": "SYN-ASSIGNMENT-001",
+  "event_time": "2026-01-01T08:00:00Z",
+  "ingestion_time": "2026-01-01T08:00:00.010Z",
+  "sequence_no": 0,
+  "payload": {
+    "assignment_id": "SYN-ASSIGNMENT-001",
+    "flight_id": "SYN-FLIGHT-001",
+    "resource_id": "SYN-STAND-001",
+    "resource_type": "stand",
+    "start_time": "2026-01-01T07:30:00Z",
+    "end_time": "2026-01-01T09:00:00Z",
+    "status": "active"
+  }
+}

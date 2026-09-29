@@ -1,0 +1,28 @@
+{
+  "airport": {
+    "airport_id": "SYN-AIRPORT-001",
+    "terminal_ids": ["SYN-T1"],
+    "annual_passengers": 90000000,
+    "timezone": "UTC",
+    "indoor_coordinate_frame": "SYN-T1-LOCAL-METRES",
+    "outdoor_crs": "EPSG:4326",
+    "bim_lod_target": 350
+  },
+  "simulation": {"seed": 42, "start_time": "2026-01-01T08:00:00Z", "duration_seconds": 3600, "time_scale": 1.0},
+  "telemetry": {"registered_points": 200000, "update_hz": 0.1, "active_fraction": 1.0, "batch_size": 1000},
+  "passengers": {"peak_arrivals_per_hour": 20000, "active_tracks": 20000, "position_hz": 1.0, "aggregate_hz": 0.2, "grid_cell_size_m": 5.0, "touchpoints": ["entry", "check_in", "security"]},
+  "flights": {"movements_per_hour": 80, "scenario_movements_per_hour": [40, 60, 80, 100, 120], "arrival_fraction": 0.5, "aircraft_position_hz": 1.0, "aodb_update_hz": 0.0166666667, "rms_update_hz": 0.0166666667, "acdm_event_driven": true},
+  "kafka": {
+    "bootstrap_servers": "localhost:9092",
+    "topic_prefix": "airport-eye.poc",
+    "partitions_per_topic": 12,
+    "replication_factor": 1,
+    "security_protocol": "PLAINTEXT",
+    "acks": "all",
+    "enable_idempotence": true,
+    "compression_type": "lz4",
+    "linger_ms": 20,
+    "queue_max_messages": 100000,
+    "entity_key_field": "entity_id"
+  }
+}
