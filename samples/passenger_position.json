@@ -11,6 +11,7 @@
   "sequence_no": 0,
   "payload": {
     "passenger_id": "SYN-PAX-000001",
+    "pnr_id": "SYN-PNR-000001",
     "flight_id": "SYN-FLIGHT-001",
     "indoor": {
       "coordinate_frame_id": "SYN-T1-LOCAL-METRES",

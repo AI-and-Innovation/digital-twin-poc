@@ -67,23 +67,41 @@ class FacilityTelemetry(Model):
 
 
 class PassengerTouchpoint(Model):
-    passenger_id: SyntheticID
-    pnr_id: SyntheticID
-    flight_id: NonEmpty
+    """Touchpoint queue snapshot and completed-service metrics for a time window."""
+
     touchpoint_id: NonEmpty
     touchpoint_type: Literal["entry", "check_in", "security"]
-    processing_state: Literal["arrived", "queued", "started", "completed"]
-    observed_at: AwareDatetime
-    indoor: IndoorPosition
+    zone_id: NonEmpty
+    window_start: AwareDatetime
+    window_end: AwareDatetime
+    queue_length: int = Field(ge=0, description="Passengers waiting at window_end; excludes those in service")
+    passengers_in_service: int = Field(ge=0)
+    processed_passengers: int = Field(ge=0, description="Services completed in (window_start, window_end]")
+    avg_wait_time_seconds: float | None = Field(ge=0, description="Mean queue-entry to service-start duration for completed services")
+    avg_processing_time_seconds: float | None = Field(ge=0, description="Mean service-start to completion duration for completed services")
+
+    @model_validator(mode="after")
+    def valid_metrics(self):
+        if self.window_end <= self.window_start:
+            raise ValueError("window_end must follow window_start")
+        durations = (self.avg_wait_time_seconds, self.avg_processing_time_seconds)
+        if self.processed_passengers == 0 and any(value is not None for value in durations):
+            raise ValueError("Duration averages must be null when no passengers completed service")
+        if self.processed_passengers > 0 and any(value is None for value in durations):
+            raise ValueError("Duration averages are required when passengers completed service")
+        return self
 
 
 class PassengerPosition(Model):
+    """Identified synthetic passenger's physical location at envelope event_time."""
+
     passenger_id: SyntheticID
+    pnr_id: SyntheticID
     flight_id: NonEmpty
     indoor: IndoorPosition
     speed_mps: float = Field(ge=0)
     heading_deg: float = Field(ge=0, lt=360)
-    movement_state: Literal["walking", "queued", "processing", "stationary"]
+    movement_state: Literal["walking", "stationary"]
 
 
 class HeatmapCell(Model):
@@ -180,7 +198,7 @@ PAYLOAD_MODELS = {
 
 ENTITY_FIELDS = {
     "registry.asset": "asset_id", "registry.point": "point_id",
-    "facility.telemetry": "point_id", "passenger.touchpoint": "passenger_id",
+    "facility.telemetry": "point_id", "passenger.touchpoint": "touchpoint_id",
     "passenger.position": "passenger_id", "passenger.aggregate": "zone_id",
     "aodb.flight": "flight_id", "rms.assignment": "assignment_id",
     "acdm.milestone": "flight_id", "aircraft.position": "aircraft_id",

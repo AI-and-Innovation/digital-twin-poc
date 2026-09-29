@@ -100,7 +100,8 @@ the runtime payload dispatch, so consumers should validate with these models.
 | --- | --- |
 | registry.asset | asset_id |
 | registry.point, facility.telemetry | point_id |
-| passenger.touchpoint, passenger.position | passenger_id |
+| passenger.position | passenger_id |
+| passenger.touchpoint | touchpoint_id |
 | passenger.aggregate | zone_id |
 | aodb.flight, acdm.milestone | flight_id |
 | rms.assignment | assignment_id |
@@ -125,6 +126,26 @@ Passenger and PNR fields require `SYN-` IDs. There are no names, contact details
 passport numbers or real passenger identifiers. Samples are contract examples,
 not a complete movement timeline. The common-envelope file duplicates the
 telemetry example for documentation and should not be replayed as an extra event.
+
+`passenger.position` tracks an identified synthetic passenger's physical location
+at `event_time`: passenger ID, synthetic PNR, flight ID, indoor x/y/z, floor, zone,
+grid, speed, heading and physical movement state (walking or stationary).
+
+`passenger.touchpoint` reports operational metrics for an entry, check-in or
+security touchpoint, keyed by touchpoint ID. It contains no individual passenger
+or flight identity. `queue_length` counts waiting passengers at `window_end`,
+excluding `passengers_in_service`. `processed_passengers` counts service
+completions in `(window_start, window_end]`. Average wait time measures queue entry
+to service start; average processing time measures service start to completion,
+both in seconds for that same completed-service cohort, including durations that
+started before the window. These averages are historical measurements, not
+predicted waits for the current queue. Both are null when there are no completions.
+Touchpoint windows need not match the 1 Hz physical tracking rate.
+
+This revises the initial unreleased 1.0.0 scaffold in place: touchpoint consumers
+must now use touchpoint keys and metric payloads, and position payloads require
+synthetic PNR IDs. Position and touchpoint sample counts are independent fixture
+examples, not a complete shared simulated population.
 
 ## Kafka and later implementation
 

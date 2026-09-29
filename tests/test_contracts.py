@@ -36,10 +36,43 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(telemetry["asset_id"], asset["asset_id"])
         self.assertEqual(telemetry["unit"], point["unit"])
         flight = payload("aodb_flight")
-        for name in ["passenger_touchpoint", "passenger_position", "rms_assignment", "acdm_milestone", "aircraft_position"]:
+        for name in ["passenger_position", "rms_assignment", "acdm_milestone", "aircraft_position"]:
             self.assertEqual(payload(name)["flight_id"], flight["flight_id"])
         self.assertEqual(payload("aircraft_position")["aircraft_id"], flight["aircraft_id"])
         self.assertEqual(payload("aircraft_position")["stand_id"], payload("rms_assignment")["resource_id"])
+
+    def test_touchpoint_metrics_and_entity_key(self):
+        event = sample("passenger_touchpoint")
+        publisher = KafkaPublisher(load_config(ROOT / "config/poc.json").kafka)
+        _, key, _ = publisher.prepare(EventEnvelope.model_validate(event))
+        self.assertEqual(key, b"SYN-AIRPORT-001:SYN-ENTRY-001")
+        event["payload"].update(processed_passengers=0, avg_wait_time_seconds=None,
+                                avg_processing_time_seconds=None)
+        EventEnvelope.model_validate(event)
+        for changes in [
+            {"queue_length": -1},
+            {"passengers_in_service": -1},
+            {"processed_passengers": -1},
+            {"avg_wait_time_seconds": -1},
+            {"avg_processing_time_seconds": -1},
+            {"window_end": event["payload"]["window_start"]},
+            {"processed_passengers": 1},
+            {"avg_wait_time_seconds": 0},
+            {"passenger_id": "SYN-PAX-000001"},
+        ]:
+            with self.subTest(changes=changes):
+                invalid = {**event, "payload": {**event["payload"], **changes}}
+                with self.assertRaises(ValidationError):
+                    EventEnvelope.model_validate(invalid)
+
+    def test_position_requires_synthetic_identification(self):
+        event = sample("passenger_position")
+        del event["payload"]["pnr_id"]
+        with self.assertRaises(ValidationError):
+            EventEnvelope.model_validate(event)
+        event["payload"]["pnr_id"] = "REAL-123"
+        with self.assertRaises(ValidationError):
+            EventEnvelope.model_validate(event)
 
     def test_rejects_invalid_contracts(self):
         mutations = [
