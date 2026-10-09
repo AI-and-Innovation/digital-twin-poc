@@ -1,7 +1,7 @@
 import json
 import math
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from airport_eye.config import load_config
@@ -58,6 +58,31 @@ class StreamTests(unittest.TestCase):
                    clock=lambda: now["t"], sleep=lambda s: (waits.append(s), now.update(t=now["t"] + s)),
                    log=lambda *_: None)
         self.assertEqual([round(w, 6) for w in waits], [1.0])
+
+    def test_paced_publisher_catches_up_after_a_pause(self):
+        from airport_eye.streaming import publish_paced
+
+        class Pub:
+            def __init__(self): self.sent = []
+            def publish(self, e): self.sent.append(e)
+            def flush(self): pass
+            def stats(self): return {"delivered": len(self.sent), "failed": 0}
+
+        origin = datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc)
+        batches = [(origin + timedelta(seconds=5 * i), [i]) for i in range(1, 7)]
+        now = {"t": 0.0}
+        waits = []
+
+        def sleep(s):
+            waits.append(round(s, 3))
+            now["t"] += s
+            if len(waits) == 2:
+                now["t"] += 20  # the machine slept for 20 s during this wait
+
+        pub = Pub()
+        publish_paced(iter(batches), pub, origin=origin, clock=lambda: now["t"], sleep=sleep, log=lambda *_: None)
+        self.assertEqual(pub.sent, [1, 2, 3, 4, 5, 6])
+        self.assertEqual(waits, [5.0, 5.0])  # after the 20 s pause batches 3-6 were due: sent at once, no waiting
 
     def test_floor_to_interval(self):
         t = datetime(2026, 10, 8, 9, 7, 42, tzinfo=timezone.utc)

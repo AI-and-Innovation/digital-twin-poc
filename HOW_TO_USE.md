@@ -84,6 +84,7 @@ because event times then run ahead of the clock.
 
 ```bash
 scripts/local_poc.sh map                        # dashboard with the simulation built in (no Kafka, no Docker)
+scripts/local_poc.sh map --scenario peak        # the same, busy at any hour (queues and alerts for a demo)
 scripts/local_poc.sh pax-files --minutes 15     # 15 minutes of all four feeds to output/ (no Kafka)
 scripts/local_poc.sh pax-files --live           # rewrite output/*_latest.* continuously
 scripts/local_poc.sh pax                        # all four feeds live to Kafka

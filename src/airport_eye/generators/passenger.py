@@ -76,6 +76,15 @@ class ArrivalBuses(Model):
     passengers_per_bus: int = Field(ge=1)
 
 
+class Scenario(Model):
+    """Named overrides on top of the base config (e.g. ``peak``: busy at any hour)."""
+
+    description: str = ""
+    flight_multiplier: float = Field(default=1.0, gt=0)
+    hourly_profile: list[float] | None = Field(default=None, min_length=24, max_length=24)
+    open_channels: dict[str, int] = Field(default_factory=dict)
+
+
 class TrackingConfig(Model):
     note: str = Field(default="", alias="_note")
     start_time: AwareDatetime
@@ -101,19 +110,34 @@ class TrackingConfig(Model):
     walking_speed_mps: tuple[float, float]
     reclaim_wait_minutes: tuple[float, float]
     arrivals_hall_dwell_minutes: tuple[float, float]
+    scenarios: dict[str, Scenario] = Field(default_factory=dict)
     _targets: ServiceTargets | None = PrivateAttr(default=None)
+
+    def with_scenario(self, name: str | None) -> "TrackingConfig":
+        """The config with a named scenario applied (None or "" = unchanged)."""
+        if not name:
+            return self
+        if name not in self.scenarios:
+            raise ValueError(f"Unknown scenario {name!r}; the config has: {', '.join(sorted(self.scenarios)) or 'none'}")
+        sc = self.scenarios[name]
+        flights = {k: v.model_copy(update={"per_hour": v.per_hour * sc.flight_multiplier}) for k, v in self.flights.items()}
+        updated = self.model_copy(update={"flights": flights, "open_channels": {**self.open_channels, **sc.open_channels},
+                                          "hourly_profile": sc.hourly_profile or self.hourly_profile})
+        updated._targets = self._targets
+        return updated
 
     model_config = Model.model_config | {"populate_by_name": True}
 
 
-def load_tracking(path: str | Path) -> tuple[TrackingConfig, dict[str, Any], TouchpointInventory, Path]:
+def load_tracking(path: str | Path, scenario: str | None = None,
+                  ) -> tuple[TrackingConfig, dict[str, Any], TouchpointInventory, Path]:
     path = Path(path).resolve()
     config = TrackingConfig.model_validate_json(path.read_text(encoding="utf-8"))
     layout = json.loads((path.parent / config.layout_file).read_text(encoding="utf-8"))
     inventory = TouchpointInventory.model_validate_json((path.parent / config.inventory_file).read_text(encoding="utf-8"))
     if config.service_targets_file:
         config._targets = ServiceTargets.load(path.parent / config.service_targets_file)
-    return config, layout, inventory, (path.parent / config.output_directory).resolve()
+    return config.with_scenario(scenario), layout, inventory, (path.parent / config.output_directory).resolve()
 
 
 def _targets(config: TrackingConfig) -> ServiceTargets | None:

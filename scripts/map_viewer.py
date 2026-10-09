@@ -206,13 +206,13 @@ class _StatePublisher:
         return {"queued": self.count, "delivered": self.count, "failed": 0}
 
 
-def simulate(state: TwinState, tracking_config: str, zones: str, speed: float) -> None:
+def simulate(state: TwinState, tracking_config: str, zones: str, speed: float, scenario: str | None = None) -> None:
     from airport_eye.esri import ZoneLocator
     from airport_eye.tracking import run_tracking_stream
 
-    state.source = f"in-process simulation (speed x{speed:g})"
+    state.source = f"in-process simulation (speed x{speed:g}{', ' + scenario if scenario else ''})"
     run_tracking_stream(tracking_config, _StatePublisher(state, ZoneLocator.from_file(zones)), speed=speed,
-                        create_topics=False, log=lambda _m: None)
+                        create_topics=False, scenario=scenario, log=lambda _m: None)
 
 
 def replay_file(state: TwinState, path: str, zones: str, seconds_per_batch: float) -> None:
@@ -318,6 +318,7 @@ def main() -> None:
     ap.add_argument("--simulate", action="store_true", help="run the terminal simulation in-process instead of reading Kafka")
     ap.add_argument("--speed", type=float, default=1.0, help="--simulate only: time compression")
     ap.add_argument("--tracking-config", default="config/passenger_tracking.json")
+    ap.add_argument("--scenario", help="--simulate only: named scenario from the tracking config, e.g. 'peak'")
     ap.add_argument("--file", help="replay a generated touchpoint JSONL file instead of reading Kafka")
     ap.add_argument("--zones", default="config/terminal_layout.json")
     ap.add_argument("--replay-seconds", type=float, default=1.0, help="seconds per simulated minute in --file mode")
@@ -331,7 +332,7 @@ def main() -> None:
     except (OSError, KeyError, ValueError):
         layout = None  # older flat zone file: no outlines to draw
     if args.simulate:
-        worker = threading.Thread(target=simulate, args=(state, args.tracking_config, args.zones, args.speed), daemon=True)
+        worker = threading.Thread(target=simulate, args=(state, args.tracking_config, args.zones, args.speed, args.scenario), daemon=True)
     elif args.file:
         worker = threading.Thread(target=replay_file, args=(state, args.file, args.zones, args.replay_seconds), daemon=True)
     else:

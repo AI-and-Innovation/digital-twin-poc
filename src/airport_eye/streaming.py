@@ -36,7 +36,7 @@ def run_stream(
     speed: float = 1.0,
     start: datetime | None = None,
     create_topics: bool = True,
-    clock: Callable[[], float] = time.monotonic,
+    clock: Callable[[], float] = time.time,
     sleep: Callable[[float], None] = time.sleep,
     log: Callable[[str], None] = print,
 ) -> dict[str, int]:
@@ -71,7 +71,7 @@ def publish_paced(
     *,
     origin: datetime,
     speed: float = 1.0,
-    clock: Callable[[], float] = time.monotonic,
+    clock: Callable[[], float] = time.time,
     sleep: Callable[[float], None] = time.sleep,
     log: Callable[[str], None] = print,
     every: int = 1,
@@ -80,6 +80,8 @@ def publish_paced(
 
     ``origin`` is the event time that maps to "now"; at ``speed`` 1 a batch for
     origin + 60 s goes out 60 s after the first call. ``every`` thins the log.
+    The default clock is the wall clock, so after the machine sleeps the overdue
+    batches go out straight away and the feed is back on time.
     """
     began = clock()
     count = 0

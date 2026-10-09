@@ -93,12 +93,19 @@ def _window(config, start: datetime | None, minutes: float | None, live: bool) -
 
 def run_tracking_stream(config_path: str | Path, publisher: Any, *, minutes: float | None = None,
                         speed: float = 1.0, start: datetime | None = None, create_topics: bool = True,
-                        clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep,
+                        scenario: str | None = None,
+                        clock: Callable[[], float] = time.time, sleep: Callable[[float], None] = time.sleep,
                         log: Callable[[str], None] = print) -> dict[str, int]:
-    """Publish one batch per interval, in real time (``speed`` compresses time)."""
+    """Publish one batch per interval, in real time (``speed`` compresses time).
+
+    Paced by the wall clock: if the machine sleeps, the feed catches up on wake
+    (the missed batches go out at once) instead of running behind from then on.
+    """
     if speed <= 0:
         raise ValueError("speed must be > 0")
-    config, layout, inventory, _ = load_tracking(config_path)
+    config, layout, inventory, _ = load_tracking(config_path, scenario)
+    if scenario:
+        log(f"Scenario: {scenario} - {config.scenarios[scenario].description}")
     begin, end = _window(config, start, minutes, live=True)
     log(f"Terminal simulation: positions every {config.interval_seconds}s, queues/zones/journeys every minute, "
         f"speed x{speed:g}; warming up from local midnight first")
@@ -177,9 +184,10 @@ PositionFileWriter = TwinFileWriter
 
 
 def write_tracking_range(config_path: str | Path, locator: ZoneLocator, out_dir: str | Path, *,
-                         start: datetime | None = None, minutes: float | None = None) -> tuple[list[Path], int]:
+                         start: datetime | None = None, minutes: float | None = None,
+                         scenario: str | None = None) -> tuple[list[Path], int]:
     """Simulate a time range and write every feed: CSV per feed, plus positions as JSONL."""
-    config, layout, inventory, _ = load_tracking(config_path)
+    config, layout, inventory, _ = load_tracking(config_path, scenario)
     begin, end = _window(config, start, minutes, live=False)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)

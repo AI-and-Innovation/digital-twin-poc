@@ -67,6 +67,7 @@ def main(argv: list[str] | None = None) -> int:
                        help="Start time with offset, e.g. 2026-10-09T08:00:00+05:30 (default: now when live)")
         p.add_argument("--minutes", type=float, help="How long to run (default: until Ctrl-C when live, else the config range)")
         p.add_argument("--speed", type=float, default=1.0, help="Live only: time compression; 12 = 5 s of simulation per wall second")
+        p.add_argument("--scenario", help="Named scenario from the tracking config, e.g. 'peak' (busy at any hour)")
     pax_stream.add_argument("--config", default="config/poc.json", help="Kafka settings are read from this config")
     pax_stream.add_argument("--bootstrap", help="Override bootstrap servers (or set KAFKA_BOOTSTRAP_SERVERS)")
     pax_stream.add_argument("--no-create-topics", action="store_true")
@@ -215,7 +216,7 @@ def _pax_stream(args: argparse.Namespace) -> int:
     print(f"Kafka: {publisher.producer_settings()['bootstrap.servers']}  topic: {publisher.topic_for_type('passenger.position')}")
     try:
         run_tracking_stream(args.tracking_config, publisher, minutes=args.minutes, speed=args.speed,
-                            start=args.start, create_topics=not args.no_create_topics)
+                            start=args.start, create_topics=not args.no_create_topics, scenario=args.scenario)
     except KeyboardInterrupt:
         publisher.flush()
         print("Stopped.", publisher.stats())
@@ -229,7 +230,7 @@ def _pax_files(args: argparse.Namespace) -> int:
     locator = ZoneLocator.from_file(args.zones)
     if not args.live:
         paths, count = write_tracking_range(args.tracking_config, locator, args.out, start=args.start,
-                                            minutes=args.minutes)
+                                            minutes=args.minutes, scenario=args.scenario)
         print(f"Wrote {count} records:")
         for path in paths:
             print(f"  {path}")
@@ -240,7 +241,7 @@ def _pax_files(args: argparse.Namespace) -> int:
           f"zone_occupancy_latest.*, journey_kpis_latest.* every minute. Ctrl-C to stop.")
     try:
         run_tracking_stream(args.tracking_config, writer, minutes=args.minutes, speed=args.speed,
-                            start=args.start, create_topics=False)
+                            start=args.start, create_topics=False, scenario=args.scenario)
     except KeyboardInterrupt:
         print("Stopped.", writer.stats())
     return 0

@@ -65,6 +65,22 @@ class FrameAndGraphTests(unittest.TestCase):
                             for x, y, f in points[:-1]))
 
 
+class ScenarioTests(unittest.TestCase):
+    def test_peak_scenario_overrides_rates_profile_and_lanes(self):
+        base, _, _, _ = load_tracking(TRACKING)
+        peak, _, _, _ = load_tracking(TRACKING, "peak")
+        sc = base.scenarios["peak"]
+        self.assertEqual(peak.hourly_profile, sc.hourly_profile)
+        for journey, stream in base.flights.items():
+            self.assertAlmostEqual(peak.flights[journey].per_hour, stream.per_hour * sc.flight_multiplier)
+        for tp, lanes in sc.open_channels.items():
+            self.assertEqual(peak.open_channels[tp], lanes)
+        self.assertEqual(peak.open_channels["SYN-HYD-ENTRY"], base.open_channels["SYN-HYD-ENTRY"])  # untouched lanes kept
+        self.assertIsNotNone(peak._targets)
+        with self.assertRaises(ValueError):
+            load_tracking(TRACKING, "no-such-scenario")
+
+
 class SimulationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

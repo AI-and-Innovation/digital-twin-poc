@@ -80,5 +80,17 @@
   },
   "walking_speed_mps": [0.9, 1.5],
   "reclaim_wait_minutes": [5, 20],
-  "arrivals_hall_dwell_minutes": [0, 4]
+  "arrivals_hall_dwell_minutes": [0, 4],
+  "scenarios": {
+    "peak": {
+      "description": "Morning-peak load at any time of day, with a few lanes fewer open, so queues and alerts appear in a demo.",
+      "flight_multiplier": 1.0,
+      "hourly_profile": [1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25],
+      "open_channels": {
+        "SYN-HYD-CHECKIN-DOM": 10,
+        "SYN-HYD-SECURITY-DOM": 11,
+        "SYN-HYD-IMMIGRATION": 8
+      }
+    }
+  }
 }

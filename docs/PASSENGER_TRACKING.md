@@ -27,7 +27,10 @@ scripts/local_poc.sh pax-files --live         # rewrite the *_latest files conti
 ```
 
 Open <http://127.0.0.1:8080>. Add `--speed 12` to `map` or `demo` to run 12 times faster (use real time,
-the default, when Esri is ingesting). The first records appear a few seconds after start: the terminal is
+the default, when Esri is ingesting). Add `--scenario peak` for a busy terminal at any hour: the morning-peak
+load all day with a few lanes fewer open, so queues and alerts show up in a demo (scenarios live in
+`config/passenger_tracking.json` under `scenarios`). The feed is paced by the wall clock: if the laptop
+sleeps, it catches up on wake instead of running behind. The first records appear a few seconds after start: the terminal is
 simulated silently from local midnight first, so "served since midnight" is complete.
 
 ## 2. The dashboard
