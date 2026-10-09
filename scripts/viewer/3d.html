@@ -17,12 +17,38 @@
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
-  body { font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--ink); }
+  body { font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--ink); display: grid; grid-template-columns: 380px 1fr; }
   button { font: inherit; color: inherit; }
+  aside { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; height: 100vh; }
+  .head { padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .head h1 { font-size: 15px; margin: 0 0 2px; }
+  .tabs { display: flex; border-bottom: 1px solid var(--line); }
+  .tabs button { flex: 1; background: none; border: 0; padding: 9px 4px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; }
+  .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+  .pane { overflow: auto; flex: 1; display: none; }
+  .pane.on { display: block; }
+  .section { padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .section h3, aside h3 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .hint { color: var(--muted); font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 11px; color: var(--muted); font-weight: 600; padding: 6px 14px; position: sticky; top: 0; background: var(--panel); z-index: 1; }
+  td { padding: 6px 14px; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; vertical-align: middle; }
+  td.num, th.num { text-align: right; }
+  tr.row { cursor: pointer; } tr.row:hover td { background: var(--soft); }
+  .name { font-weight: 500; } .type { color: var(--muted); font-size: 11px; }
+  .pill { display: inline-block; min-width: 28px; text-align: center; padding: 1px 7px; border-radius: 999px; color: #fff; font-weight: 600; font-size: 12px; }
+  .bar { height: 6px; background: var(--soft); border-radius: 3px; overflow: hidden; margin-top: 3px; }
+  .bar i { display: block; height: 100%; }
+  .alert-row { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; }
+  .timeline { list-style: none; margin: 0; padding: 0; }
+  .timeline li { display: grid; grid-template-columns: 44px 12px 1fr; gap: 6px; padding: 4px 0; align-items: start; }
+  .timeline .t { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .timeline i { width: 10px; height: 10px; border-radius: 50%; margin-top: 3px; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; }
+  .kv dt { color: var(--muted); } .kv dd { margin: 0; }
+  .mapwrap { position: relative; min-width: 0; height: 100vh; }
   #map { position: absolute; inset: 0; }
   .panel { position: absolute; z-index: 2; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,.12); }
-  .head { top: 12px; left: 12px; padding: 10px 12px; max-width: 360px; }
-  .head h1 { font-size: 15px; margin: 0 0 2px; }
   .sub { color: var(--muted); font-size: 11px; }
   .status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-top: 6px; }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--idle); }
@@ -42,28 +68,54 @@
   .legend .row { display: flex; flex-wrap: wrap; gap: 3px 10px; margin: 3px 0; }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
   .legend .ramp { display: inline-block; width: 110px; height: 8px; vertical-align: middle; border-radius: 2px; background: linear-gradient(90deg, #e7f0fb, #6aa3dc, #3b5bb5, #6a2c91, #b0124f); }
-  .follow { bottom: 28px; right: 12px; padding: 10px 12px; width: 280px; display: none; }
-  .follow.on { display: block; }
-  .follow dl { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; margin: 6px 0; }
-  .follow dt { color: var(--muted); } .follow dd { margin: 0; }
   .tip { position: absolute; z-index: 3; pointer-events: none; background: rgba(24,32,43,.92); color: #fff; padding: 6px 8px; border-radius: 6px; font-size: 12px; max-width: 260px; }
   a { color: var(--accent); }
-  @media (max-width: 760px) { .ctl { width: 200px; } .legend, .head .tiles { display: none; } }
+  @media (max-width: 900px) {
+    body { grid-template-columns: 1fr; grid-template-rows: 60vh auto; }
+    aside { order: 2; height: auto; border-right: 0; border-top: 1px solid var(--line); }
+    .mapwrap { order: 1; height: 60vh; } .ctl { width: 190px; } .legend { display: none; }
+  }
 </style>
 </head>
 <body>
-<div id="map"></div>
-
-<div class="panel head">
-  <h1>Terminal 1 in 3D</h1>
-  <div class="sub">Departures level above, arrivals below. Drag to pan, right-drag or Ctrl-drag to tilt and rotate. <a href="./">2D dashboard</a></div>
-  <div class="status"><span class="dot" id="dot"></span><span id="statusText">Connecting...</span> <b id="clock"></b></div>
-  <div class="tiles">
-    <div class="tile"><b id="kIn">-</b><span>in terminal</span></div>
-    <div class="tile"><b id="kQ">-</b><span>queuing</span></div>
-    <div class="tile" id="alertTile"><b id="kAlerts">-</b><span>over target</span></div>
+<aside>
+  <div class="head">
+    <h1>Terminal 1 in 3D</h1>
+    <div class="sub">Departures level above, arrivals below. Drag to pan, right-drag or Ctrl-drag to tilt and rotate. <a href="./">2D dashboard</a></div>
+    <div class="status"><span class="dot" id="dot"></span><span id="statusText">Connecting...</span> <b id="clock"></b></div>
+    <div class="tiles">
+      <div class="tile"><b id="kIn">-</b><span>in terminal</span></div>
+      <div class="tile"><b id="kQ">-</b><span>queuing</span></div>
+      <div class="tile" id="alertTile"><b id="kAlerts">-</b><span>alerts</span></div>
+      <div class="tile"><b id="kK2A">-</b><span>kerb to airside</span></div>
+      <div class="tile"><b id="kA2E">-</b><span>arrival to exit</span></div>
+      <div class="tile"><b id="kLong">-</b><span>longest wait</span></div>
+    </div>
   </div>
-</div>
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="checkpoints">Checkpoints</button>
+    <button role="tab" aria-selected="false" data-tab="zones">Zones</button>
+    <button role="tab" aria-selected="false" data-tab="passenger">Passenger</button>
+  </div>
+  <div class="pane on" id="pane-checkpoints">
+    <div class="section"><h3>Alerts</h3><div id="alerts" class="hint">None</div></div>
+    <table>
+      <thead><tr><th>Checkpoint</th><th class="num">Queue</th><th class="num">Wait</th><th class="num">Open</th></tr></thead>
+      <tbody id="tpRows"></tbody>
+    </table>
+  </div>
+  <div class="pane" id="pane-zones">
+    <div class="section"><div class="hint">People per zone at the last minute, densest first. Click a zone to fly to it.</div></div>
+    <table>
+      <thead><tr><th>Zone</th><th class="num">People</th><th class="num">/100 m²</th></tr></thead>
+      <tbody id="zoneRows"></tbody>
+    </table>
+  </div>
+  <div class="pane" id="pane-passenger"><div class="section" id="paxBox"></div></div>
+</aside>
+
+<div class="mapwrap">
+<div id="map"></div>
 
 <div class="panel ctl">
   <h3>Floors</h3>
@@ -81,8 +133,8 @@
 </div>
 
 <div class="panel legend" id="legend"></div>
-<div class="panel follow" id="follow"></div>
 <div class="tip" id="tip" hidden></div>
+</div>
 
 <script>
 (function () {
@@ -226,9 +278,11 @@
     Object.keys(st.received || {}).forEach(function (key) { total += st.received[key]; });
     $("kIn").textContent = k.people_in_terminal !== undefined ? k.people_in_terminal.toLocaleString() : data.positions.rows.length;
     $("kQ").textContent = k.people_queuing !== undefined ? k.people_queuing : "-";
-    var over = (data.touchpoints || []).filter(function (p) { return p.status === "congested"; });
-    $("kAlerts").textContent = over.length; $("alertTile").classList.toggle("alert", over.length > 0);
+    $("kK2A").textContent = k.kerb_to_airside_p50_minutes !== null && k.kerb_to_airside_p50_minutes !== undefined ? k.kerb_to_airside_p50_minutes.toFixed(1) + " min" : "-";
+    $("kA2E").textContent = k.arrival_to_exit_p50_minutes !== null && k.arrival_to_exit_p50_minutes !== undefined ? k.arrival_to_exit_p50_minutes.toFixed(1) + " min" : "-";
+    $("kLong").textContent = secs(k.longest_estimated_wait_seconds);
     $("clock").textContent = hhmm(data.t);
+    tables();
     var dot = $("dot"), txt = $("statusText");
     if (st.error) { dot.className = "dot err"; txt.textContent = st.error; }
     else if (!total) { dot.className = "dot"; txt.textContent = "Waiting for data"; }
@@ -242,16 +296,78 @@
       '<div class="sub">Outline: OpenStreetMap. Interior: schematic. Floors drawn ' + spacing + "x further apart than real.</div>";
   }
 
-  function startFollow(id) { following = id; followData = null; fetchTrack(); draw(); }
+  // ---- left panel ----
+  document.querySelectorAll(".tabs button").forEach(function (b) { b.onclick = function () { selectTab(b.getAttribute("data-tab")); }; });
+  function selectTab(name) {
+    document.querySelectorAll(".tabs button").forEach(function (x) { x.setAttribute("aria-selected", String(x.getAttribute("data-tab") === name)); });
+    document.querySelectorAll(".pane").forEach(function (p) { p.classList.toggle("on", p.id === "pane-" + name); });
+  }
+  $("alertTile").onclick = function () { selectTab("checkpoints"); };
+  function flyTo(lon, lat, floor, zoom) {
+    if (floor && !floorsOn[floor]) { floorsOn[floor] = true; buttons(); draw(); }
+    map.easeTo({ center: [lon, lat], zoom: zoom || 18.6, pitch: 60, bearing: map.getBearing(), duration: 900 });
+  }
+  var ORDER = { congested: 0, busy: 1, normal: 2, no_target: 3 };
+  function tables() {
+    var tps = (data.touchpoints || []).slice().sort(function (a, b) {
+      var oa = a.status in ORDER ? ORDER[a.status] : 3, ob = b.status in ORDER ? ORDER[b.status] : 3;
+      return (oa - ob) || (b.queue_length - a.queue_length);
+    });
+    $("tpRows").innerHTML = tps.map(function (p) {
+      return '<tr class="row" data-id="' + esc(p.entity_id) + '"><td><div class="name">' + esc(p.touchpoint_name || nice(p.entity_id)) + '</div><div class="type">' + esc((p.touchpoint_type || "").replace("_", " ")) + " &middot; " + esc(p.floor || "") +
+        " &middot; target " + secs(p.target_wait_seconds) + '</div></td><td class="num"><span class="pill" style="background:' + rgb(STATUS[p.status] || STATUS.no_target) + '">' + (p.queue_length || 0) +
+        '</span></td><td class="num">' + secs(p.estimated_wait_seconds) + '</td><td class="num">' + (p.service_channels || "-") + "</td></tr>";
+    }).join("");
+    var alerts = [];
+    tps.forEach(function (p) {
+      if (p.status === "congested" || p.status === "busy")
+        alerts.push('<div class="alert-row"><span class="pill" style="background:' + rgb(STATUS[p.status]) + '">' + (p.status === "busy" ? "busy" : "over") + "</span><span><b>" + esc(p.touchpoint_name || nice(p.entity_id)) + "</b>: " + p.queue_length + " waiting, about " + secs(p.estimated_wait_seconds) + " now; 95% waited up to " + secs(p.p95_wait_seconds) + " in the last 30 min (target " + secs(p.target_wait_seconds) + ")</span></div>");
+    });
+    (data.zones || []).forEach(function (zz) {
+      if ((zz.density_per_100m2 || 0) >= DENSE) alerts.push('<div class="alert-row"><span class="pill" style="background:' + rgb(RAMP[4]) + '">crowded</span><span><b>' + esc(zz.zone_name || nice(zz.zone_id)) + "</b>: " + zz.passenger_count + " people</span></div>");
+    });
+    $("alerts").innerHTML = alerts.length ? alerts.join("") : "None. Every checkpoint is within its wait target.";
+    $("kAlerts").textContent = alerts.length; $("alertTile").classList.toggle("alert", alerts.length > 0);
+
+    var zones = (data.zones || []).filter(function (zz) { return zz.passenger_count > 0; })
+      .sort(function (a, b) { return (b.density_per_100m2 || 0) - (a.density_per_100m2 || 0); });
+    var max = Math.max.apply(null, zones.map(function (zz) { return zz.density_per_100m2 || 0; }).concat([1]));
+    $("zoneRows").innerHTML = zones.length ? zones.map(function (zz) {
+      var d = zz.density_per_100m2 || 0;
+      return '<tr class="row" data-zone="' + esc(zz.zone_id) + '"><td><div class="name">' + esc(zz.zone_name || nice(zz.zone_id)) + '</div><div class="type">' + esc(zz.floor) + " &middot; " +
+        (zz.people_queuing || 0) + " queuing, " + (zz.people_dwelling || 0) + " dwelling, " + (zz.people_walking || 0) + " walking" +
+        '</div><div class="bar"><i style="width:' + Math.round(d / max * 100) + "%;background:" + rgb(ramp(d)) + '"></i></div></td><td class="num">' + zz.passenger_count + '</td><td class="num">' + d.toFixed(1) + "</td></tr>";
+    }).join("") : '<tr><td colspan="3" class="hint">Zone counts arrive once a minute.</td></tr>';
+  }
+  $("tpRows").addEventListener("click", function (e) {
+    var tr = e.target.closest("tr.row"); if (!tr || !data) return;
+    var p = (data.touchpoints || []).filter(function (x) { return x.entity_id === tr.getAttribute("data-id"); })[0];
+    if (p && p.longitude !== null) flyTo(p.longitude, p.latitude, p.floor, 19);
+  });
+  $("zoneRows").addEventListener("click", function (e) {
+    var tr = e.target.closest("tr.row"); if (!tr || !data) return;
+    var zz = (data.zones || []).filter(function (x) { return x.zone_id === tr.getAttribute("data-zone"); })[0];
+    if (zz && zz.longitude !== null) flyTo(zz.longitude, zz.latitude, zz.floor, 18);
+  });
+
+  // ---- follow a passenger ----
+  var FOLLOW_HINT = '<div class="hint">Click a passenger on the map to follow them: their path is drawn in 3D and their journey appears here.</div>';
+  $("paxBox").innerHTML = FOLLOW_HINT;
+  function startFollow(id) { following = id; followData = null; selectTab("passenger"); fetchTrack(); draw(); }
   function fetchTrack() {
-    if (!following) { $("follow").classList.remove("on"); return; }
+    if (!following) { $("paxBox").innerHTML = FOLLOW_HINT; return; }
     fetch("api/track?id=" + encodeURIComponent(following), { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (d) {
-      followData = d; var cur = d.current, f = d.fields, get = function (k) { return cur ? cur[f.indexOf(k)] : null; };
-      $("follow").innerHTML = "<b>" + esc(following) + "</b><dl><dt>Journey</dt><dd>" + esc((get("journey") || "-").replace(/_/g, " ")) + "</dd><dt>Flight</dt><dd>" + esc(get("flight_id") || "-") +
-        "</dd><dt>Gate</dt><dd>" + esc(nice(get("gate_id"))) + "</dd><dt>Now</dt><dd>" + (cur ? esc(ACT_LABEL[get("activity")] || get("activity")) + " &middot; " + esc(nice(get("indoor_zone_id"))) + " &middot; " + esc(get("floor")) : (d.ended ? "Boarded or left" : "-")) +
-        '</dd></dl><button class="btn" id="stop">Stop following</button>';
-      $("follow").classList.add("on");
-      $("stop").onclick = function () { following = null; followData = null; $("follow").classList.remove("on"); draw(); };
+      followData = d;
+      var cur = d.current, f = d.fields, get = function (k) { return cur ? cur[f.indexOf(k)] : null; };
+      var tl = d.timeline || [];
+      $("paxBox").innerHTML = "<h3>" + esc(following) + '</h3><dl class="kv"><dt>Journey</dt><dd>' + esc((get("journey") || "-").replace(/_/g, " ")) + "</dd><dt>Flight</dt><dd>" + esc(get("flight_id") || "-") +
+        "</dd><dt>Gate</dt><dd>" + esc(nice(get("gate_id"))) + "</dd><dt>Now</dt><dd>" + (cur ? esc(ACT_LABEL[get("activity")] || get("activity")) + " &middot; " + esc(nice(get("indoor_zone_id"))) + " &middot; " + esc(get("floor")) : (d.ended ? "Boarded or left the terminal" : "-")) +
+        '</dd></dl><div style="margin:8px 0;display:flex;gap:6px"><button class="btn" id="zoomPax">Fly to</button><button class="btn" id="stopPax">Stop following</button></div>' +
+        '<h3>Journey so far</h3><ul class="timeline">' + tl.map(function (t) {
+          return '<li><span class="t">' + hhmm(t[0]).slice(0, 5) + '</span><i style="background:' + rgb(ACT[t[1]] || [134, 142, 150]) + '"></i><span>' + esc(ACT_LABEL[t[1]] || t[1]) + (t[2] ? " - " + esc(nice(t[2])) : t[3] ? " - " + esc(nice(t[3])) : "") + "</span></li>";
+        }).join("") + "</ul>";
+      $("stopPax").onclick = function () { following = null; followData = null; $("paxBox").innerHTML = FOLLOW_HINT; draw(); };
+      $("zoomPax").onclick = function () { if (cur) flyTo(get("longitude"), get("latitude"), get("floor"), 19.2); };
       draw();
     }).catch(function () {});
   }

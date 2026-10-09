@@ -333,7 +333,7 @@
     var alerts = [];
     tps.forEach(function (p) {
       if (p.status === "congested" || p.status === "busy")
-        alerts.push('<div class="alert-row"><span class="pill" style="background:' + STATUS[p.status] + '">' + (p.status === "busy" ? "busy" : "over") + "</span><span><b>" + esc(p.touchpoint_name || nice(p.entity_id)) + "</b>: " + p.queue_length + " waiting, about " + secs(p.estimated_wait_seconds) + " (target " + secs(p.target_wait_seconds) + ")</span></div>");
+        alerts.push('<div class="alert-row"><span class="pill" style="background:' + STATUS[p.status] + '">' + (p.status === "busy" ? "busy" : "over") + "</span><span><b>" + esc(p.touchpoint_name || nice(p.entity_id)) + "</b>: " + p.queue_length + " waiting, about " + secs(p.estimated_wait_seconds) + " now; 95% waited up to " + secs(p.p95_wait_seconds) + " in the last 30 min (target " + secs(p.target_wait_seconds) + ")</span></div>");
     });
     (data.zones || []).forEach(function (z) {
       if ((z.density_per_100m2 || 0) >= DENSE) alerts.push('<div class="alert-row"><span class="pill" style="background:' + RAMP[4] + '">crowded</span><span><b>' + esc(z.zone_name || nice(z.zone_id)) + "</b>: " + z.passenger_count + " people, " + z.density_per_100m2.toFixed(1) + " per 100 m&sup2;</span></div>");
