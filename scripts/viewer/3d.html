@@ -122,6 +122,8 @@
   <div class="btns" id="floorBtns"></div>
   <h3>Show</h3>
   <div class="btns" id="layerBtns"></div>
+  <h3>Colour passengers by</h3>
+  <div class="btns" id="colorBtns"></div>
   <h3>Floor spacing <span id="spaceLbl"></span></h3>
   <input type="range" id="spacing" min="1" max="6" step="0.5" value="3" aria-label="Floor spacing">
   <h3>Camera</h3>
@@ -165,7 +167,8 @@
   map.addControl(overlay);
 
   var layout = null, data = null, following = null, followData = null;
-  var floorsOn = { L1: true, L0: true }, show = { shell: true, slabs: true, pax: true, queues: true, density: false };
+  var floorsOn = { L1: true, L0: true }, show = { shell: true, slabs: true, pax: true, counters: true, labels: true, queues: false, density: false };
+  var colorBy = "activity";
   var spacing = 3;
 
   function z(floor) { var f = layout && layout.floors && layout.floors[floor]; return (f ? f.z : 0) * spacing; }
@@ -178,11 +181,16 @@
       b.onclick = function () { floorsOn[f[0]] = !floorsOn[f[0]]; buttons(); draw(); }; fb.appendChild(b);
     });
     var lb = $("layerBtns"); lb.innerHTML = "";
-    [["shell", "Building"], ["slabs", "Floor zones"], ["density", "Density height"], ["pax", "Passengers"], ["queues", "Queue bars"]].forEach(function (x) {
+    [["shell", "Building"], ["slabs", "Floor zones"], ["density", "Density height"], ["pax", "Passengers"], ["counters", "Counters + queues"], ["labels", "Labels"], ["queues", "Queue bars"]].forEach(function (x) {
       var b = document.createElement("button"); b.className = "btn"; b.textContent = x[1]; b.setAttribute("aria-pressed", String(show[x[0]]));
       b.onclick = function () { show[x[0]] = !show[x[0]]; buttons(); draw(); }; lb.appendChild(b);
     });
     $("spaceLbl").textContent = "(x" + spacing + ")";
+    var cb = $("colorBtns"); cb.innerHTML = "";
+    [["activity", "Activity"], ["journey", "Journey"], ["risk", "Time to flight"]].forEach(function (x) {
+      var b = document.createElement("button"); b.className = "btn"; b.textContent = x[1]; b.setAttribute("aria-pressed", String(colorBy === x[0]));
+      b.onclick = function () { colorBy = x[0]; buttons(); panels(); compose(); }; cb.appendChild(b);
+    });
   }
   $("spacing").oninput = function () { spacing = +this.value; buttons(); draw(); };
   document.querySelectorAll("[data-view]").forEach(function (b) {
@@ -199,7 +207,14 @@
     var t = $("tip");
     if (!info || !info.object) { t.hidden = true; return; }
     var o = info.object, html = "";
-    if (info.layer.id === "pax") html = "<b>" + esc(o[0]) + "</b><br>" + esc((o[5] || "").replace(/_/g, " ")) + "<br>" + esc(ACT_LABEL[o[4]] || o[4]) + " &middot; " + esc(nice(o[8])) + "<br><i>Click to follow</i>";
+    if (info.layer.id.indexOf("pax") === 0) {
+      var fl = data.positions.fields, mtd = o[fl.indexOf("minutes_to_departure")];
+      html = "<b>" + esc(o[0]) + "</b><br>" + esc((o[fl.indexOf("journey")] || "").replace(/_/g, " ")) + (mtd !== null && mtd !== undefined ? " &middot; departs in " + Math.round(mtd) + " min" : "") +
+        "<br>" + esc(ACT_LABEL[o[fl.indexOf("activity")]] || o[fl.indexOf("activity")]) + " &middot; " + esc(nice(o[fl.indexOf("indoor_zone_id")])) + "<br><i>Click to follow</i>";
+    }
+    else if (info.layer.id === "qareas" || info.layer.id === "counters") o = o.tp;
+    if (info.layer.id === "qareas" || info.layer.id === "counters" || info.layer.id === "labels")
+      html = "<b>" + esc(o.touchpoint_name || nice(o.entity_id)) + "</b><br>" + o.queue_length + " waiting &middot; about " + secs(o.estimated_wait_seconds) + "<br>Target " + secs(o.target_wait_seconds) + " &middot; " + esc((o.status || "").replace("_", " ")) + " &middot; " + (o.service_channels || "-") + " open";
     else if (info.layer.id === "queues") html = "<b>" + esc(o.touchpoint_name || nice(o.entity_id)) + "</b><br>" + o.queue_length + " waiting &middot; about " + secs(o.estimated_wait_seconds) + "<br>Target " + secs(o.target_wait_seconds) + " &middot; " + esc((o.status || "").replace("_", " ")) + " &middot; " + (o.service_channels || "-") + " open";
     else if (info.layer.id === "slabs" || info.layer.id === "density") html = "<b>" + esc(o.name) + "</b> (" + esc(o.floor) + ")<br>" + (o.count !== undefined ? o.count + " people &middot; " + o.density.toFixed(1) + " per 100 m&sup2;" : "no data yet");
     else if (info.layer.id === "shell") html = esc(o.name);
@@ -209,67 +224,170 @@
 
   // ---- layers ----
   function ring(coords, height) { return coords.map(function (c) { return [c[0], c[1], height]; }); }
+  var under = [], over = [];            // cached layers below / above the passengers
+  var anim = {}, frame = 0, lastFrame = 0;
+
+  // A point in metres relative to a checkpoint's service line: along = towards the queue, lateral = along the line.
+  function tpPoint(g, along, lateral, height) {
+    var dx = g.dir[0], dy = g.dir[1], px = dy, py = -dx, k = layout.deg_per_m;
+    return [g.lon + (dx * along + px * lateral) * k.lon, g.lat + (dy * along + py * lateral) * k.lat, height];
+  }
+  function rect(g, a0, a1, l0, l1, h) { return [tpPoint(g, a0, l0, h), tpPoint(g, a0, l1, h), tpPoint(g, a1, l1, h), tpPoint(g, a1, l0, h)]; }
+  function shortName(p) { var n = p.touchpoint_name || nice(p.entity_id); return n.length > 30 ? n.slice(0, 29) + "." : n; }
 
   function draw() {
     if (!layout) return;
-    var layers = [];
+    under = []; over = [];
     var zones = {}; ((data && data.zones) || []).forEach(function (zz) { zones[zz.zone_id] = zz; });
     var buildings = layout.features.filter(function (f) { return f.properties.kind === "building"; });
     var slabs = layout.features.filter(function (f) { return f.properties.kind === "zone" && floorsOn[f.properties.floor]; }).map(function (f) {
       var zz = zones[f.properties.zone_id];
       return { polygon: ring(f.geometry.coordinates[0], z(f.properties.floor)), name: f.properties.name, floor: f.properties.floor,
-        count: zz ? zz.passenger_count : undefined, density: zz ? zz.density_per_100m2 || 0 : 0, base: z(f.properties.floor) };
+        count: zz ? zz.passenger_count : undefined, density: zz ? zz.density_per_100m2 || 0 : 0 };
     });
     var top = (z("L1") || 8) + 6;
 
     if (show.shell) {
-      layers.push(new deck.PolygonLayer({ id: "shell", data: buildings, getPolygon: function (f) { return f.geometry.coordinates[0]; },
+      under.push(new deck.PolygonLayer({ id: "shell", data: buildings, getPolygon: function (f) { return f.geometry.coordinates[0]; },
         extruded: true, wireframe: true, getElevation: top, getFillColor: [200, 210, 225, 28], getLineColor: [40, 52, 70, 160], lineWidthMinPixels: 1,
         pickable: true, parameters: { depthWriteEnabled: false }, material: false }));
       ["L0", "L1"].forEach(function (fl) {
         if (!floorsOn[fl]) return;
-        layers.push(new deck.PolygonLayer({ id: "outline-" + fl, data: buildings, getPolygon: function (f) { return ring(f.geometry.coordinates[0], z(fl) + 0.05); },
+        under.push(new deck.PolygonLayer({ id: "outline-" + fl, data: buildings, getPolygon: function (f) { return ring(f.geometry.coordinates[0], z(fl) + 0.05); },
           filled: true, stroked: true, getFillColor: fl === "L1" ? [250, 252, 255, 55] : [235, 240, 248, 120], getLineColor: [24, 32, 43, 220], lineWidthMinPixels: 1.5,
           parameters: { depthWriteEnabled: false } }));
       });
     }
     if (show.slabs) {
-      layers.push(new deck.PolygonLayer({ id: "slabs", data: slabs, getPolygon: function (s) { return s.polygon; }, stroked: true, filled: true,
+      under.push(new deck.PolygonLayer({ id: "slabs", data: slabs, getPolygon: function (s) { return s.polygon; }, stroked: true, filled: true,
         getFillColor: function (s) { var c = ramp(s.density); return [c[0], c[1], c[2], s.count ? (s.floor === "L1" ? 95 : 140) : 25]; },
-        getLineColor: [59, 91, 181, 180], lineWidthMinPixels: 1, pickable: true, parameters: { depthWriteEnabled: false },
-        updateTriggers: { getFillColor: [data && data.t] } }));
+        getLineColor: [59, 91, 181, 180], lineWidthMinPixels: 1, pickable: true, parameters: { depthWriteEnabled: false } }));
     }
     if (show.density) {
-      layers.push(new deck.PolygonLayer({ id: "density", data: slabs.filter(function (s) { return s.count; }),
+      under.push(new deck.PolygonLayer({ id: "density", data: slabs.filter(function (s) { return s.count; }),
         getPolygon: function (s) { return s.polygon; }, extruded: true, getElevation: function (s) { return Math.max(0.5, s.density * 0.8); },
-        getFillColor: function (s) { var c = ramp(s.density); return [c[0], c[1], c[2], 170]; }, pickable: true,
-        updateTriggers: { getFillColor: [data && data.t], getElevation: [data && data.t] } }));
+        getFillColor: function (s) { var c = ramp(s.density); return [c[0], c[1], c[2], 170]; }, pickable: true }));
     }
-    if (data && show.pax) {
-      var f = data.positions.fields, iF = f.indexOf("floor"), iA = f.indexOf("activity"), iX = f.indexOf("longitude"), iY = f.indexOf("latitude"), iI = f.indexOf("passenger_id");
-      var rows = data.positions.rows.filter(function (r) { return floorsOn[r[iF]]; });
-      layers.push(new deck.ScatterplotLayer({ id: "pax", data: rows, getPosition: function (r) { return [r[iX], r[iY], z(r[iF]) + 0.9]; },
-        getRadius: function (r) { return r[iI] === following ? 2.4 : 1.0; }, radiusUnits: "meters", radiusMinPixels: 2.6, radiusMaxPixels: 10, billboard: true,
-        getFillColor: function (r) { var c = ACT[r[iA]] || [134, 142, 150]; return [c[0], c[1], c[2], 235]; },
-        stroked: true, getLineColor: function (r) { return r[iI] === following ? [24, 32, 43, 255] : [0, 0, 0, 0]; }, lineWidthMinPixels: 1.5,
-        pickable: true, onClick: function (info) { if (info.object) startFollow(info.object[iI]); },
-        updateTriggers: { getRadius: [following], getLineColor: [following], getPosition: [spacing] } }));
-    }
-    if (data && show.queues) {
-      var tps = (data.touchpoints || []).filter(function (p) { return p.longitude !== null && floorsOn[p.floor]; });
-      layers.push(new deck.ColumnLayer({ id: "queues", data: tps, diskResolution: 16, radius: 3, extruded: true, pickable: true,
-        getPosition: function (p) { return [p.longitude, p.latitude, z(p.floor)]; },
-        getElevation: function (p) { return 1.5 + (p.queue_length || 0) * 1.0; },
-        getFillColor: function (p) { var c = STATUS[p.status] || STATUS.no_target; return [c[0], c[1], c[2], 230]; },
-        updateTriggers: { getElevation: [data.t], getFillColor: [data.t], getPosition: [spacing] } }));
+    if (data && layout.touchpoints) {
+      // Checkpoints drawn as they are: open counters or lanes along the service line, the queue area in
+      // front of them (grows with the queue, coloured by status) and a label.
+      var tps = (data.touchpoints || []).filter(function (p) { return floorsOn[p.floor] && layout.touchpoints[p.entity_id] && !/BOARDING/.test(p.entity_id); });
+      var counters = [], areas = [];
+      tps.forEach(function (p) {
+        var g = layout.touchpoints[p.entity_id], h = z(p.floor), n = Math.max(1, p.service_channels || 1), step = g.width_m / n;
+        for (var k = 0; k < n; k++) {
+          var lat = (k - (n - 1) / 2) * step, half = Math.min(0.7, step * 0.35);
+          counters.push({ polygon: rect(g, -0.5, 0.5, lat - half, lat + half, h), tp: p });
+        }
+        var q = p.queue_length || 0, rows = Math.ceil(q / g.per_row), span = Math.min(g.per_row * 0.75, g.width_m) / 2 + 0.6;
+        var depth = q ? 2.5 + rows * 0.9 + 0.4 : 2.2;
+        areas.push({ polygon: rect(g, 1.2, depth, -span, span, h + 0.08), tp: p });
+      });
+      if (show.counters) {
+        under.push(new deck.PolygonLayer({ id: "qareas", data: areas, getPolygon: function (a) { return a.polygon; }, filled: true, stroked: true,
+          getFillColor: function (a) { var c = STATUS[a.tp.status] || STATUS.no_target; return [c[0], c[1], c[2], 70]; },
+          getLineColor: function (a) { var c = STATUS[a.tp.status] || STATUS.no_target; return [c[0], c[1], c[2], 220]; }, lineWidthMinPixels: 1.5,
+          pickable: true, parameters: { depthWriteEnabled: false } }));
+        under.push(new deck.PolygonLayer({ id: "counters", data: counters, getPolygon: function (c) { return c.polygon; }, extruded: true,
+          getElevation: 1.1, getFillColor: [92, 104, 122, 255], getLineColor: [40, 48, 60, 255], wireframe: true, pickable: true }));
+      }
+      if (show.queues) {
+        under.push(new deck.ColumnLayer({ id: "queues", data: tps, diskResolution: 16, radius: 1.6, extruded: true, pickable: true,
+          getPosition: function (p) { var g = layout.touchpoints[p.entity_id]; return tpPoint(g, -2.5, 0, z(p.floor)); },
+          getElevation: function (p) { return 1.5 + (p.queue_length || 0) * 0.5; },
+          getFillColor: function (p) { var c = STATUS[p.status] || STATUS.no_target; return [c[0], c[1], c[2], 230]; } }));
+      }
+      if (show.labels) {
+        over.push(new deck.TextLayer({ id: "labels", data: tps.filter(function (p) { return map.getZoom() >= 17.2 || p.status === "congested" || p.status === "busy"; }),
+          getPosition: function (p) { var g = layout.touchpoints[p.entity_id]; return tpPoint(g, -2.5, 0, z(p.floor) + 5 + (show.queues ? (p.queue_length || 0) * 0.5 : 0)); },
+          getText: function (p) { return shortName(p) + "\n" + (p.queue_length || 0) + " waiting | " + secs(p.estimated_wait_seconds) + " | " + (p.service_channels || "-") + " open"; },
+          getSize: 12, sizeUnits: "pixels", getColor: [255, 255, 255, 255], background: true, backgroundPadding: [6, 3],
+          getBackgroundColor: function (p) { var c = STATUS[p.status] || STATUS.no_target; return [c[0], c[1], c[2], 235]; },
+          fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif", fontWeight: 600, getTextAnchor: "middle", getAlignmentBaseline: "bottom",
+          characterSet: "auto", pickable: true }));
+      }
+      if (show.labels && layout.gates && map.getZoom() >= 17.6) {
+        over.push(new deck.TextLayer({ id: "gates", data: layout.gates.filter(function (g) { return floorsOn[g.floor]; }),
+          getPosition: function (g) { return [g.lon, g.lat, z(g.floor) + 2]; }, getText: function (g) { return "Gate " + g.gate_id.replace("SYN-HYD-GATE-", ""); },
+          getSize: 11, sizeUnits: "pixels", getColor: [24, 32, 43, 255], background: true, getBackgroundColor: [255, 255, 255, 220], backgroundPadding: [4, 2],
+          characterSet: "auto" }));
+      }
     }
     if (followData && followData.points && followData.points.length > 1) {
-      layers.push(new deck.PathLayer({ id: "trail", data: [followData.points], widthUnits: "pixels", getWidth: 3,
-        getPath: function (pts) { return pts.map(function (p) { return [p[1], p[2], z(p[3]) + 1]; }); }, getColor: [24, 32, 43, 230],
-        updateTriggers: { getPath: [spacing, followData.points.length] } }));
+      over.push(new deck.PathLayer({ id: "trail", data: [followData.points], widthUnits: "pixels", getWidth: 3,
+        getPath: function (pts) { return pts.map(function (p) { return [p[1], p[2], z(p[3]) + 1]; }); }, getColor: [24, 32, 43, 230] }));
     }
-    overlay.setProps({ layers: layers, onHover: tip });
+    compose();
   }
+
+  // Passengers move smoothly between updates: each glides from where it was drawn to its newest position.
+  var GLIDE_MS = 4500;
+  function updateAnim() {
+    if (!data) return;
+    var f = data.positions.fields, iI = f.indexOf("passenger_id"), iX = f.indexOf("longitude"), iY = f.indexOf("latitude"), now = performance.now(), seen = {};
+    data.positions.rows.forEach(function (r) {
+      var id = r[iI], a = anim[id]; seen[id] = true;
+      if (!a) { anim[id] = { from: [r[iX], r[iY]], to: [r[iX], r[iY]], t0: now }; return; }
+      if (a.to[0] !== r[iX] || a.to[1] !== r[iY]) { a.from = position(a, now); a.to = [r[iX], r[iY]]; a.t0 = now; }
+    });
+    Object.keys(anim).forEach(function (id) { if (!seen[id]) delete anim[id]; });
+  }
+  function position(a, now) {
+    var t = Math.min(1, (now - a.t0) / GLIDE_MS);
+    return [a.from[0] + (a.to[0] - a.from[0]) * t, a.from[1] + (a.to[1] - a.from[1]) * t];
+  }
+
+  var JOURNEY = { domestic_departure: [47, 111, 222], international_departure: [156, 54, 181], domestic_arrival: [12, 166, 120],
+    international_arrival: [232, 89, 12], ga_departure: [73, 80, 87], ga_arrival: [73, 80, 87] };
+  var LANDSIDE = /ZONE-(DEPARTURES|CHECKIN|SECURITY|CITYSIDE|TRANSFER|OUTSIDE)/;
+  // Time to flight: red = departing within 40 min and still landside, amber = within 40 min airside but not
+  // at the gate yet, green = fine; arrivals grey.
+  function riskOf(r, f) {
+    var m = r[f.indexOf("minutes_to_departure")];
+    if (m === null || m === undefined) return "arrival";
+    if (m >= 40) return "ok";
+    var act = r[f.indexOf("activity")], zone = r[f.indexOf("indoor_zone_id")] || "";
+    if (LANDSIDE.test(zone)) return "late";
+    return act === "at_gate" || /BOARDING/.test(r[f.indexOf("touchpoint_id")] || "") ? "ok" : "tight";
+  }
+  var RISK = { late: [211, 63, 63], tight: [217, 145, 0], ok: [46, 158, 91], arrival: [160, 168, 180] };
+  function colourOf(r, f) {
+    if (colorBy === "journey") return JOURNEY[r[f.indexOf("journey")]] || [134, 142, 150];
+    if (colorBy === "risk") return RISK[riskOf(r, f)];
+    return ACT[r[f.indexOf("activity")]] || [134, 142, 150];
+  }
+
+  function paxLayers(now) {
+    if (!data || !show.pax) return [];
+    var f = data.positions.fields, iF = f.indexOf("floor"), iI = f.indexOf("passenger_id");
+    var rows = data.positions.rows.filter(function (r) { return floorsOn[r[iF]]; });
+    var pos = function (r) { var a = anim[r[iI]], p = a ? position(a, now) : [r[f.indexOf("longitude")], r[f.indexOf("latitude")]]; return p; };
+    var common = { data: rows, pickable: true, onClick: function (info) { if (info.object) startFollow(info.object[iI]); },
+      getFillColor: function (r) { var c = colourOf(r, f); return [c[0], c[1], c[2], 240]; },
+      updateTriggers: { getPosition: [frame, spacing], getFillColor: [colorBy, data.t] } };
+    if (map.getZoom() >= 17.6) {
+      // close up: standing figures, 1.7 m tall
+      return [new deck.ColumnLayer(Object.assign({ id: "pax-figures", diskResolution: 8, radius: 0.32, extruded: true,
+        getPosition: function (r) { var p = pos(r); return [p[0], p[1], z(r[iF])]; },
+        getElevation: function (r) { return r[iI] === following ? 3.2 : 1.7; } }, common,
+        { updateTriggers: Object.assign({}, common.updateTriggers, { getElevation: [following] }) }))];
+    }
+    return [new deck.ScatterplotLayer(Object.assign({ id: "pax-dots", getPosition: function (r) { var p = pos(r); return [p[0], p[1], z(r[iF]) + 0.9]; },
+      getRadius: function (r) { return r[iI] === following ? 2.4 : 1.0; }, radiusUnits: "meters", radiusMinPixels: 2.6, radiusMaxPixels: 10, billboard: true,
+      stroked: true, getLineColor: function (r) { return r[iI] === following ? [24, 32, 43, 255] : [0, 0, 0, 0]; }, lineWidthMinPixels: 1.5 }, common,
+      { updateTriggers: Object.assign({}, common.updateTriggers, { getRadius: [following], getLineColor: [following] }) }))];
+  }
+
+  function compose() {
+    overlay.setProps({ layers: under.concat(paxLayers(performance.now()), over), onHover: tip });
+  }
+  function tick(ts) {
+    if (ts - lastFrame > 66) { lastFrame = ts; frame++; compose(); }  // ~15 frames per second is plenty for walking people
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+  var lastZoomBand = null;
+  map.on("zoomend", function () { var band = map.getZoom() >= 17.6 ? 2 : map.getZoom() >= 17.2 ? 1 : 0; if (band !== lastZoomBand) { lastZoomBand = band; draw(); } });
 
   // ---- side panels ----
   function panels() {
@@ -287,13 +405,20 @@
     if (st.error) { dot.className = "dot err"; txt.textContent = st.error; }
     else if (!total) { dot.className = "dot"; txt.textContent = "Waiting for data"; }
     else { dot.className = "dot live"; txt.textContent = "Live - " + (st.source || ""); }
-    var counts = {}, iA = data.positions.fields.indexOf("activity"), iF = data.positions.fields.indexOf("floor");
-    data.positions.rows.forEach(function (r) { if (floorsOn[r[iF]]) counts[r[iA]] = (counts[r[iA]] || 0) + 1; });
-    $("legend").innerHTML = "<b>Passengers</b>" +
-      '<div class="row">' + Object.keys(ACT).map(function (a) { return '<span><i style="background:' + rgb(ACT[a]) + '"></i>' + ACT_LABEL[a] + " " + (counts[a] || 0) + "</span>"; }).join("") + "</div>" +
-      '<b>Queue bars</b> (height = people waiting)<div class="row"><span><i style="background:' + rgb(STATUS.normal) + '"></i>On target</span><span><i style="background:' + rgb(STATUS.busy) + '"></i>Busy</span><span><i style="background:' + rgb(STATUS.congested) + '"></i>Over target</span><span><i style="background:' + rgb(STATUS.no_target) + '"></i>No target</span></div>' +
+    var f = data.positions.fields, iF = f.indexOf("floor"), counts = {}, legendItems;
+    data.positions.rows.forEach(function (r) {
+      if (!floorsOn[r[iF]]) return;
+      var key = colorBy === "journey" ? r[f.indexOf("journey")] : colorBy === "risk" ? riskOf(r, f) : r[f.indexOf("activity")];
+      counts[key] = (counts[key] || 0) + 1;
+    });
+    if (colorBy === "journey") legendItems = [["domestic_departure", "Domestic departure"], ["international_departure", "International departure"], ["domestic_arrival", "Domestic arrival"], ["international_arrival", "International arrival"]].map(function (x) { return [JOURNEY[x[0]], x[1], counts[x[0]]]; });
+    else if (colorBy === "risk") legendItems = [["late", "Departs < 40 min, still landside"], ["tight", "Departs < 40 min, airside"], ["ok", "On time"], ["arrival", "Arriving"]].map(function (x) { return [RISK[x[0]], x[1], counts[x[0]]]; });
+    else legendItems = Object.keys(ACT).map(function (a) { return [ACT[a], ACT_LABEL[a], counts[a]]; });
+    $("legend").innerHTML = "<b>Passengers by " + (colorBy === "risk" ? "time to flight" : colorBy) + "</b>" +
+      '<div class="row">' + legendItems.map(function (x) { return '<span><i style="background:' + rgb(x[0]) + '"></i>' + x[1] + " " + (x[2] || 0) + "</span>"; }).join("") + "</div>" +
+      '<b>Checkpoints</b> (grey blocks = open counters or lanes, shaded area = queue)<div class="row"><span><i style="background:' + rgb(STATUS.normal) + '"></i>On target</span><span><i style="background:' + rgb(STATUS.busy) + '"></i>Busy</span><span><i style="background:' + rgb(STATUS.congested) + '"></i>Over target</span><span><i style="background:' + rgb(STATUS.no_target) + '"></i>No target</span></div>' +
       '<div class="row"><span>Zone density</span><span class="ramp"></span><span>' + DENSE + "+ per 100 m&sup2;</span></div>" +
-      '<div class="sub">Outline: OpenStreetMap. Interior: schematic. Floors drawn ' + spacing + "x further apart than real.</div>";
+      '<div class="sub">Outline: OpenStreetMap. Interior: schematic. Floors drawn ' + spacing + "x further apart than real. Zoom in to see people as figures.</div>";
   }
 
   // ---- left panel ----
@@ -374,7 +499,7 @@
 
   function poll() {
     fetch("api/state", { cache: "no-store" }).then(function (r) { return r.json(); })
-      .then(function (d) { data = d; panels(); draw(); if (following) fetchTrack(); })
+      .then(function (d) { data = d; updateAnim(); panels(); draw(); if (following) fetchTrack(); })
       .catch(function () { $("dot").className = "dot err"; $("statusText").textContent = "Dashboard server not reachable"; });
   }
 

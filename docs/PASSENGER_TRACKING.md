@@ -47,6 +47,12 @@ What an operations room would look at, modelled on Esri airport dashboards and p
 - **Passenger tab:** click on or next to a dot to follow that passenger: journey, flight, gate, where they
   are now, their path on the map and a timeline of their journey.
 - **Replay:** the slider at the bottom steps back through the last 90 minutes, one minute at a time.
+- **Checkpoints up close:** zoom in (2D or 3D) and each checkpoint is drawn as it is: one block per open
+  counter or lane along its service line, the queue area in front of it (grows with the queue, coloured
+  by status) and a label with people waiting, wait time and lanes open.
+- **Passengers:** move smoothly between the 5-second updates; in 3D, zoomed in, they are standing figures.
+  Colour them by **activity**, **journey**, or **time to flight**: red = departing within 40 minutes and
+  still landside (at risk of missing the flight), amber = within 40 minutes airside but not yet at the gate.
 - **How it works tab:** the data flow and sources, in plain language.
 - **3D view** (`3D view` button, or <http://127.0.0.1:8080/3d.html>): the terminal shell with both floors
   stacked (spacing adjustable), passengers at their floor height, a bar per checkpoint whose height is the
@@ -115,6 +121,7 @@ All four are flat JSON (the Esri record), keyed by `entity_id`, with `event_time
 | `longitude`, `latitude`, `floor`, `elevation_m` | Position (WGS84), floor (`L1`, `L0`) and the floor's height above ground (0 or 8 m) |
 | `indoor_x`, `indoor_y`, `indoor_z`, `indoor_zone_id`, `indoor_grid_id` | Terminal-local metres, zone, 5 m grid cell |
 | `speed_mps`, `heading_deg`, `movement_state` | Over the last 5 s |
+| `minutes_to_departure` | Departing passengers: minutes until their flight's scheduled departure (null for arrivals) |
 
 **`passenger.touchpoint`** (every minute, 16 checkpoints: entry, check-in, security, boarding, immigration)
 - the same fields as the queue feed in `docs/ESRI_SETUP.md`, now measured from the passengers.

@@ -79,6 +79,9 @@
   .legend .ramp { display: inline-block; width: 120px; height: 8px; vertical-align: middle; border-radius: 2px; background: linear-gradient(90deg, #e7f0fb, #6aa3dc, #3b5bb5, #6a2c91, #b0124f); }
   .banner { position: absolute; z-index: 600; left: 50%; top: 10px; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; box-shadow: 0 2px 8px rgba(0,0,0,.12); }
   .leaflet-popup-content { margin: 10px 12px; font: 12px/1.4 system-ui, sans-serif; }
+  .tp-label { color: #fff; border: 0; font: 600 11px/1.3 system-ui, sans-serif; padding: 3px 7px; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+  .tp-label.tp-normal { background: #2e9e5b; } .tp-label.tp-busy { background: #d99100; } .tp-label.tp-congested { background: #d33f3f; } .tp-label.tp-no_target { background: #8a94a6; }
+  .tp-label:before { display: none; }
   .pop h4 { margin: 0 0 2px; font-size: 13px; }
   .pop .meta { color: #667085; font-size: 11px; margin-bottom: 6px; }
   .pop dl { display: grid; grid-template-columns: auto auto; gap: 1px 12px; margin: 0; }
@@ -105,7 +108,7 @@
     <div class="sub">Local view of the Esri feeds. Synthetic passengers. Not an Esri product.</div>
   </div>
   <div class="status"><span class="dot" id="dot"></span><span id="statusText">Connecting...</span> <span class="clock" id="clock"></span></div>
-  <a class="btn" href="3d.html" style="text-decoration:none">3D view</a>
+  <a class="btn" href="3d.html" style="text-decoration:none;color:var(--ink);font-weight:600">3D view</a>
   <div class="tiles">
     <div class="tile"><b id="kIn">-</b><span>in terminal</span></div>
     <div class="tile"><b id="kQ">-</b><span>queuing now</span></div>
@@ -174,6 +177,7 @@
     <div class="ctl">
       <div class="group" id="floorBtns"></div>
       <div class="group" id="layerBtns"></div>
+      <div class="group" id="colorBtns"></div>
     </div>
     <div class="legend" id="legend"></div>
   </div>
@@ -216,6 +220,8 @@
 
   var layout = null, floor = "L1", data = null, live = true, following = null, followData = null, fitted = false;
   var show = { zones: true, heat: false, pax: true, touch: true };
+  var colorBy = "activity", paxMarkers = {}, anim = {}, GLIDE_MS = 4500, DETAIL_ZOOM = 18;
+  var tpGeoLayer = L.layerGroup().addTo(map);
   var zonePolys = {}, touchMarkers = {};
 
   function banner(text, ms) { var b = $("banner"); b.textContent = text; b.hidden = false; if (ms) setTimeout(function () { b.hidden = true; }, ms); }
@@ -236,6 +242,11 @@
       var b = document.createElement("button"); b.className = "btn"; b.textContent = x[1]; b.setAttribute("aria-pressed", String(show[x[0]]));
       b.onclick = function () { show[x[0]] = !show[x[0]]; buttons(); render(); };
       lb.appendChild(b);
+    });
+    var cb = $("colorBtns"); cb.innerHTML = "<span class=\"hint\" style=\"align-self:center;padding:0 4px\">Colour by</span>";
+    [["activity", "Activity"], ["journey", "Journey"], ["risk", "Time to flight"]].forEach(function (x) {
+      var b = document.createElement("button"); b.className = "btn"; b.textContent = x[1]; b.setAttribute("aria-pressed", String(colorBy === x[0]));
+      b.onclick = function () { colorBy = x[0]; buttons(); render(); }; cb.appendChild(b);
     });
   }
 
@@ -307,14 +318,37 @@
       rows.map(function (r) { return "<dt>" + esc(r[0]) + "</dt><dd>" + esc(r[1]) + "</dd>"; }).join("") + "</dl>" + spark(p.history || []) + "</div>";
   }
 
+  // A point in metres relative to a checkpoint's service line (along = towards the queue, lateral = along the line).
+  function tpPoint(g, along, lateral) {
+    var dx = g.dir[0], dy = g.dir[1], k = layout.deg_per_m;
+    return [g.lat + (dy * along - dx * lateral) * k.lat, g.lon + (dx * along + dy * lateral) * k.lon];
+  }
+  function tpRect(g, a0, a1, l0, l1) { return [tpPoint(g, a0, l0), tpPoint(g, a0, l1), tpPoint(g, a1, l1), tpPoint(g, a1, l0)]; }
+  // Zoomed in, a checkpoint is drawn as it is: open counters or lanes, the queue area in front (grows with
+  // the queue, coloured by status) and a label.
+  function drawCheckpoint(p, g) {
+    var colour = STATUS[p.status] || STATUS.no_target, n = Math.max(1, p.service_channels || 1), step = g.width_m / n;
+    var q = p.queue_length || 0, rows = Math.ceil(q / g.per_row), span = Math.min(g.per_row * 0.75, g.width_m) / 2 + 0.6;
+    var area = L.polygon(tpRect(g, 1.2, q ? 2.5 + rows * 0.9 + 0.4 : 2.2, -span, span), { pane: "touch", color: colour, weight: 1.5, fillColor: colour, fillOpacity: 0.22 })
+      .bindPopup(tpPopup(p), { maxWidth: 300 }).addTo(tpGeoLayer);
+    for (var k = 0; k < n; k++) {
+      var lat = (k - (n - 1) / 2) * step, half = Math.min(0.7, step * 0.35);
+      L.polygon(tpRect(g, -0.5, 0.5, lat - half, lat + half), { pane: "touch", color: "#3d4757", weight: 1, fillColor: "#5c687a", fillOpacity: 1, interactive: false }).addTo(tpGeoLayer);
+    }
+    area.bindTooltip("<b>" + esc(p.touchpoint_name || nice(p.entity_id)) + "</b><br>" + q + " waiting &middot; " + secs(p.estimated_wait_seconds) + " &middot; " + (p.service_channels || "-") + " open",
+      { permanent: true, direction: "top", className: "tp-label tp-" + (p.status || "no_target"), offset: [0, -4] });
+  }
+
   function renderTouchpoints() {
     var order = { congested: 0, busy: 1, normal: 2, no_target: 3 };
     var tps = (data.touchpoints || []).slice().sort(function (a, b) { var oa = a.status in order ? order[a.status] : 3, ob = b.status in order ? order[b.status] : 3;
       return (oa - ob) || (b.queue_length - a.queue_length); });
-    var seen = {};
+    var seen = {}, detail = map.getZoom() >= DETAIL_ZOOM && layout && layout.touchpoints;
+    tpGeoLayer.clearLayers();
     tps.forEach(function (p) {
-      var id = p.entity_id;
+      var id = p.entity_id, g = layout && layout.touchpoints ? layout.touchpoints[id] : null;
       if (!show.touch || (p.floor && p.floor !== floor) || p.longitude === null || p.longitude === undefined) return;
+      if (detail && g && !/BOARDING/.test(id)) { drawCheckpoint(p, g); return; }
       seen[id] = true;
       var q = p.queue_length || 0, style = { pane: "touch", radius: 7 + Math.min(14, Math.sqrt(q) * 2.6), color: "#fff", weight: 2, fillColor: STATUS[p.status] || STATUS.no_target, fillOpacity: 0.8 };
       var m = touchMarkers[id];
@@ -379,17 +413,44 @@
   });
 
   function idx(name) { return data.positions.fields.indexOf(name); }
-  function renderPax() {
-    paxLayer.clearLayers();
-    if (!show.pax) return;
-    var iF = idx("floor"), iA = idx("activity"), iX = idx("longitude"), iY = idx("latitude"), iI = idx("passenger_id");
-    data.positions.rows.forEach(function (r) {
-      if (r[iF] !== floor) return;
-      var me = following && r[iI] === following;
-      L.circleMarker([r[iY], r[iX]], { renderer: paxRenderer, pane: "pax", interactive: false, radius: me ? 7 : 2.6, weight: me ? 3 : 0, color: "#18202b",
-        fillColor: ACT[r[iA]] || "#868e96", fillOpacity: 0.9 }).addTo(paxLayer);
-    });
+  var JOURNEY = { domestic_departure: "#2f6fde", international_departure: "#9c36b5", domestic_arrival: "#0ca678", international_arrival: "#e8590c", ga_departure: "#495057", ga_arrival: "#495057" };
+  var JOURNEY_LABEL = { domestic_departure: "Domestic departure", international_departure: "International departure", domestic_arrival: "Domestic arrival", international_arrival: "International arrival" };
+  var RISK = { late: "#d33f3f", tight: "#d99100", ok: "#2e9e5b", arrival: "#a0a8b4" };
+  var RISK_LABEL = { late: "Departs < 40 min, still landside", tight: "Departs < 40 min, airside", ok: "On time", arrival: "Arriving" };
+  var LANDSIDE = /ZONE-(DEPARTURES|CHECKIN|SECURITY|CITYSIDE|TRANSFER|OUTSIDE)/;
+  // Time to flight: late = within 40 min and still landside; tight = within 40 min airside, not yet at the gate.
+  function riskOf(r) {
+    var m = r[idx("minutes_to_departure")];
+    if (m === null || m === undefined) return "arrival";
+    if (m >= 40) return "ok";
+    if (LANDSIDE.test(r[idx("indoor_zone_id")] || "")) return "late";
+    return r[idx("activity")] === "at_gate" || /BOARDING/.test(r[idx("touchpoint_id")] || "") ? "ok" : "tight";
   }
+  function keyOf(r) { return colorBy === "journey" ? r[idx("journey")] : colorBy === "risk" ? riskOf(r) : r[idx("activity")]; }
+  function colourOf(r) { var k = keyOf(r); return (colorBy === "journey" ? JOURNEY[k] : colorBy === "risk" ? RISK[k] : ACT[k]) || "#868e96"; }
+
+  // Passengers glide from where they were drawn to their newest position, so movement is smooth.
+  function glide(a, now) { var t = Math.min(1, (now - a.t0) / GLIDE_MS); return [a.from[0] + (a.to[0] - a.from[0]) * t, a.from[1] + (a.to[1] - a.from[1]) * t]; }
+  function renderPax() {
+    var iF = idx("floor"), iX = idx("longitude"), iY = idx("latitude"), iI = idx("passenger_id"), now = performance.now(), seen = {};
+    data.positions.rows.forEach(function (r) {
+      var id = r[iI];
+      if (!show.pax || r[iF] !== floor) return;
+      seen[id] = true;
+      var a = anim[id];
+      if (!a || data.mode === "replay") a = anim[id] = { from: [r[iY], r[iX]], to: [r[iY], r[iX]], t0: now };
+      else if (a.to[0] !== r[iY] || a.to[1] !== r[iX]) { a.from = glide(a, now); a.to = [r[iY], r[iX]]; a.t0 = now; }
+      var me = following && id === following, style = { radius: me ? 7 : 2.8, weight: me ? 3 : 0, color: "#18202b", fillColor: colourOf(r), fillOpacity: 0.92 };
+      var m = paxMarkers[id];
+      if (!m) { m = paxMarkers[id] = L.circleMarker(glide(a, now), Object.assign({ renderer: paxRenderer, pane: "pax", interactive: false }, style)).addTo(paxLayer); }
+      else m.setStyle(style);
+    });
+    Object.keys(paxMarkers).forEach(function (id) { if (!seen[id]) { paxLayer.removeLayer(paxMarkers[id]); delete paxMarkers[id]; delete anim[id]; } });
+  }
+  setInterval(function () {
+    var now = performance.now();
+    Object.keys(paxMarkers).forEach(function (id) { var a = anim[id]; if (a && now - a.t0 < GLIDE_MS + 200) paxMarkers[id].setLatLng(glide(a, now)); });
+  }, 100);
 
   // Clicking the map follows the nearest passenger on this floor (dots are too small to hit exactly).
   map.on("click", function (e) {
@@ -423,14 +484,16 @@
   }
 
   function renderLegend() {
-    var counts = {}, iF = idx("floor"), iA = idx("activity"), here = 0;
-    data.positions.rows.forEach(function (r) { if (r[iF] === floor) { here++; counts[r[iA]] = (counts[r[iA]] || 0) + 1; } });
-    var acts = ["walking", "queuing", "in_service", "dwelling", "at_gate", "reclaim"];
+    var counts = {}, iF = idx("floor"), here = 0, items;
+    data.positions.rows.forEach(function (r) { if (r[iF] === floor) { here++; var k = keyOf(r); counts[k] = (counts[k] || 0) + 1; } });
+    if (colorBy === "journey") items = Object.keys(JOURNEY_LABEL).map(function (k) { return [JOURNEY[k], JOURNEY_LABEL[k], counts[k]]; });
+    else if (colorBy === "risk") items = Object.keys(RISK_LABEL).map(function (k) { return [RISK[k], RISK_LABEL[k], counts[k]]; });
+    else items = ["walking", "queuing", "in_service", "dwelling", "at_gate", "reclaim"].map(function (k) { return [ACT[k], ACT_LABEL[k], counts[k]]; });
     $("legend").innerHTML = "<b>" + (floor === "L1" ? "Departures level (L1)" : floor === "L0" ? "Arrivals level (L0)" : esc(floor)) + ": " + here.toLocaleString() + " passengers</b>" +
-      '<div class="row">' + acts.map(function (a) { return '<span><i style="background:' + ACT[a] + '"></i>' + ACT_LABEL[a] + " " + (counts[a] || 0) + "</span>"; }).join("") + "</div>" +
+      '<div class="row">' + items.map(function (x) { return '<span><i style="background:' + x[0] + '"></i>' + x[1] + " " + (x[2] || 0) + "</span>"; }).join("") + "</div>" +
       '<div class="row">Checkpoints: <span><i style="background:' + STATUS.normal + '"></i>On target</span><span><i style="background:' + STATUS.busy + '"></i>Busy</span><span><i style="background:' + STATUS.congested + '"></i>Over target</span></div>' +
       '<div class="row"><span>Density</span><span class="ramp"></span><span>' + DENSE + "+ per 100 m&sup2;</span></div>" +
-      '<div class="hint">Outline: OpenStreetMap. Interior: schematic. Circle size = queue length.</div>';
+      '<div class="hint">Outline: OpenStreetMap. Interior: schematic. Zoom in to see counters, queue areas and labels.</div>';
   }
 
   // ---- follow a passenger ----
@@ -487,7 +550,7 @@
   }
 
   renderFollow();
-  map.on("zoomend", function () { if (data && show.heat) renderHeat(); });
+  map.on("zoomend", function () { if (data) { renderTouchpoints(); if (show.heat) renderHeat(); } });
   fetch("api/layout").then(function (r) { return r.ok ? r.json() : null; }).then(function (d) { layout = d; buttons(); drawLayout(); render(); }).catch(function () { buttons(); });
   poll(); setInterval(poll, 2000);
 })();

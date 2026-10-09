@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import mimetypes
 import threading
 import time
@@ -29,7 +30,7 @@ VIEWER = HERE / "viewer"
 PREFIX = "airport-eye.poc.esri."
 FEEDS = ("passenger.touchpoint", "passenger.position", "passenger.aggregate", "passenger.journey_kpi")
 POSITION_FIELDS = ("longitude", "latitude", "floor", "activity", "journey", "flight_id", "gate_id",
-                   "indoor_zone_id", "touchpoint_id")
+                   "indoor_zone_id", "touchpoint_id", "minutes_to_departure", "heading_deg")
 TP_FIELDS = ("entity_id", "touchpoint_name", "touchpoint_type", "flow", "floor", "longitude", "latitude",
              "queue_length", "queue_limit", "passengers_in_service", "service_channels", "utilization_pct",
              "processed_passengers", "throughput_per_hour", "throughput_since_midnight", "estimated_wait_seconds",
@@ -252,8 +253,23 @@ def layout_geojson(path: str) -> dict:
             features.append({"type": "Feature", "geometry": {"type": "Polygon", "coordinates": ring(polygon)},
                              "properties": {"kind": "zone", "zone_id": zone["zone_id"], "name": zone["name"],
                                             "floor": zone["floor"]}})
+    # Checkpoint geometry for drawing counters and queue areas: the service-line centre,
+    # the queue direction and the line width, plus degrees per metre to place points.
+    lat0 = layout["frame"]["origin_lat"]
+    per_m = {"lon": 1 / (111_320 * math.cos(math.radians(lat0))), "lat": 1 / 110_574}
+    touchpoints = {}
+    for tp_id, t in layout["touchpoints"].items():
+        lon, lat = frame.to_wgs84(t["x"], t["y"])
+        dx, dy = t["queue_direction"]
+        norm = math.hypot(dx, dy) or 1.0
+        touchpoints[tp_id] = {"lon": lon, "lat": lat, "floor": t["floor"], "dir": [dx / norm, dy / norm],
+                              "width_m": t["service_width_m"], "per_row": max(2, int(min(t["service_width_m"], 30) / 0.75))}
+    gates = []
+    for g in layout.get("gates", []):
+        lon, lat = frame.to_wgs84(g["x"], g["y"])
+        gates.append({"gate_id": g["gate_id"], "ref": g.get("osm_ref"), "flow": g["flow"], "lon": lon, "lat": lat, "floor": g["floor"]})
     return {"type": "FeatureCollection", "features": features, "floors": layout["floors"],
-            "note": layout.get("_note", "")}
+            "touchpoints": touchpoints, "gates": gates, "deg_per_m": per_m, "note": layout.get("_note", "")}
 
 
 def make_handler(state: TwinState, layout: dict | None):

@@ -128,6 +128,7 @@ class PassengerPosition(Model):
         default=None, description="'boarded' and 'exited' are the last record of a track")
     touchpoint_id: str | None = Field(default=None, description="Touchpoint being queued at or served by")
     gate_id: str | None = None
+    minutes_to_departure: float | None = Field(default=None, description="Departing passengers: minutes until their flight's scheduled departure")
 
 
 class HeatmapCell(Model):

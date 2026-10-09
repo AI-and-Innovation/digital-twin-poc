@@ -578,6 +578,8 @@ class TerminalSimulation:
             "movement_state": "walking" if speed > 0.05 else "stationary",
             "journey": pax.journey, "activity": pax.activity, "touchpoint_id": pax.touchpoint_id,
             "gate_id": pax.flight.gate_id,
+            "minutes_to_departure": round((pax.flight.time - when.timestamp()) / 60, 1)
+            if pax.journey in DEPARTURES else None,
         }
         return self._envelope("passenger.position", pax.pax_id, when, payload)
 

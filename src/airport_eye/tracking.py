@@ -29,6 +29,7 @@ FEEDS = ("passenger.position", "passenger.touchpoint", "passenger.aggregate", "p
 POSITION_TOPIC_TYPE = "passenger.position"
 LEADING = {
     "passenger.position": ["passenger_id", "journey", "activity", "touchpoint_id", "flight_id", "gate_id",
+                           "minutes_to_departure",
                            "event_time", "longitude", "latitude", "floor", "elevation_m", "indoor_zone_id", "indoor_x", "indoor_y",
                            "speed_mps", "heading_deg", "movement_state"],
     "passenger.touchpoint": TOUCHPOINT_COLUMNS,
