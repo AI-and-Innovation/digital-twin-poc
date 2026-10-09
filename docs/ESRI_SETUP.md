@@ -51,7 +51,8 @@ They stay in the inventory; the switch is `include_types` in `config/passenger_t
 | `entity_id` | string | Touchpoint ID. **Use as the track/ID field.** |
 | `event_time_epoch_ms` | long | End of the one-minute window, UTC epoch milliseconds. **Use as the time field** (no date format needed). |
 | `longitude`, `latitude` | double | WGS84 (EPSG:4326). **Use as X / Y.** Inside the real terminal outline; interior positions are schematic, see section 5. |
-| `floor` | string | Floor label of the zone (`L0`). |
+| `floor` | string | Floor label (`L1` departures, `L0` arrivals). |
+| `elevation_m` | double | Floor height above the ground floor in metres (0 or 8): Z for 3D scenes. |
 | `touchpoint_type` | string | entry, check_in, security, boarding, immigration |
 | `zone_id` | string | Terminal zone the touchpoint is in. |
 | `queue_length` | int | People waiting at the end of the window (not counting those being served). |

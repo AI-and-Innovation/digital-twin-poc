@@ -48,6 +48,11 @@ What an operations room would look at, modelled on Esri airport dashboards and p
   are now, their path on the map and a timeline of their journey.
 - **Replay:** the slider at the bottom steps back through the last 90 minutes, one minute at a time.
 - **How it works tab:** the data flow and sources, in plain language.
+- **3D view** (`3D view` button, or <http://127.0.0.1:8080/3d.html>): the terminal shell with both floors
+  stacked (spacing adjustable), passengers at their floor height, a bar per checkpoint whose height is the
+  queue, zone density as floor colour or height, and follow-a-passenger with a 3D trail. Tilt and rotate with
+  right-drag or Ctrl-drag. Built with MapLibre GL and deck.gl, loaded from the jsDelivr CDN, so it needs
+  internet (the 2D dashboard only needs it for the base map).
 
 ## 3. Where the coordinates come from
 
@@ -107,7 +112,7 @@ All four are flat JSON (the Esri record), keyed by `entity_id`, with `event_time
 | `journey` | `domestic_departure`, `international_departure`, `domestic_arrival`, `international_arrival`, `ga_departure`, `ga_arrival` |
 | `activity` | `walking`, `queuing`, `in_service`, `dwelling`, `at_gate`, `reclaim`; the last record of a track is `boarded` or `exited` |
 | `touchpoint_id` | Checkpoint being queued at or served by |
-| `longitude`, `latitude`, `floor` | Position (WGS84) and floor (`L1`, `L0`) |
+| `longitude`, `latitude`, `floor`, `elevation_m` | Position (WGS84), floor (`L1`, `L0`) and the floor's height above ground (0 or 8 m) |
 | `indoor_x`, `indoor_y`, `indoor_z`, `indoor_zone_id`, `indoor_grid_id` | Terminal-local metres, zone, 5 m grid cell |
 | `speed_mps`, `heading_deg`, `movement_state` | Over the last 5 s |
 
@@ -147,6 +152,10 @@ All four are flat JSON (the Esri record), keyed by `entity_id`, with `event_time
 | Zone occupancy | Join to the zone polygon layer (`zone_occupancy_latest.geojson`) for a density choropleth per floor. |
 | Checkpoint queues | Point layer with status colours; ArcGIS Dashboards list and gauges for wait against target; alert when `status` is `congested`. |
 | Journey KPIs | Dashboards indicators and line charts. |
+
+**3D in ArcGIS:** every located record (positions, checkpoints, zones) carries `elevation_m`, the floor's
+height above the ground floor. Use it as Z in a scene layer (ArcGIS Scene Viewer, or ArcGIS Indoors 3D on
+the real floor plans) with "relative to ground" placement. Positions also keep `indoor_z`, the same value.
 
 ## 7. Limits
 

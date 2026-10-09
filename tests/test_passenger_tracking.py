@@ -153,6 +153,8 @@ class SimulationTests(unittest.TestCase):
         self.assertAlmostEqual(x, record["indoor_x"], delta=0.05)
         self.assertAlmostEqual(y, record["indoor_y"], delta=0.05)
         self.assertEqual(record["floor"], record["indoor_floor"])
+        self.assertEqual(record["elevation_m"], {"L1": 8.0, "L0": 0.0}[record["floor"]])
+        self.assertEqual(record["elevation_m"], record["indoor_z"])
         self.assertTrue(17.22 < record["latitude"] < 17.25 and 78.41 < record["longitude"] < 78.44)
 
 

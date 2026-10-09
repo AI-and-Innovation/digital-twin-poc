@@ -12,7 +12,8 @@ Conventions (confirm against the Esri team's actual feed definition):
     date-format string is needed; ISO-8601 strings are kept alongside;
   * ``longitude``/``latitude`` are WGS84 (EPSG:4326) and only present when a
     location can be resolved. Indoor x/y (passenger positions) are converted with
-    the terminal layout's local frame (config/terminal_layout.json).
+    the terminal layout's local frame (config/terminal_layout.json);
+  * ``elevation_m`` is the floor's height above the terminal ground floor (Z for 3D).
 """
 
 from __future__ import annotations
@@ -46,10 +47,11 @@ class ZoneLocator:
     SPREAD_DEG = (0.00006, 0.00013)
 
     def __init__(self, zones: dict[str, dict[str, Any]], touchpoints: dict[str, dict[str, Any]] | None = None,
-                 frame: LocalFrame | None = None):
+                 frame: LocalFrame | None = None, floor_heights: dict[str, float] | None = None):
         self.zones = zones
         self.touchpoints = touchpoints or {}
         self.frame = frame
+        self.floor_heights = floor_heights or {}  # floor -> metres above the ground floor
 
     @classmethod
     def from_file(cls, path: str | Path) -> "ZoneLocator":
@@ -72,7 +74,8 @@ class ZoneLocator:
                 x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(p, p[1:] + p[:1]))))
             zones[zone["zone_id"]] = point(*polygon_centroid(largest), zone["floor"])
         touchpoints = {tp: point(t["x"], t["y"], t["floor"]) for tp, t in layout["touchpoints"].items()}
-        return cls(zones, touchpoints, frame)
+        heights = {name: f["z"] for name, f in layout.get("floors", {}).items()}
+        return cls(zones, touchpoints, frame, heights)
 
     def locate(self, zone_id: str | None, entity_id: str | None = None) -> dict[str, Any] | None:
         if entity_id and entity_id in self.touchpoints:
@@ -140,4 +143,7 @@ def to_esri_record(event: EventEnvelope, locator: ZoneLocator | None = None) -> 
         record["latitude"] = lat
         if floor is not None and "floor" not in record:
             record["floor"] = floor
+        # Height above the terminal's ground floor, for 3D scenes (Z in ArcGIS).
+        if locator is not None and record.get("floor") in locator.floor_heights:
+            record["elevation_m"] = locator.floor_heights[record["floor"]]
     return record

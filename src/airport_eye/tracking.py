@@ -29,12 +29,12 @@ FEEDS = ("passenger.position", "passenger.touchpoint", "passenger.aggregate", "p
 POSITION_TOPIC_TYPE = "passenger.position"
 LEADING = {
     "passenger.position": ["passenger_id", "journey", "activity", "touchpoint_id", "flight_id", "gate_id",
-                           "event_time", "longitude", "latitude", "floor", "indoor_zone_id", "indoor_x", "indoor_y",
+                           "event_time", "longitude", "latitude", "floor", "elevation_m", "indoor_zone_id", "indoor_x", "indoor_y",
                            "speed_mps", "heading_deg", "movement_state"],
     "passenger.touchpoint": TOUCHPOINT_COLUMNS,
     "passenger.aggregate": ["zone_id", "zone_name", "floor", "window_end", "passenger_count", "density_per_100m2",
                             "area_m2", "people_walking", "people_queuing", "people_in_service", "people_dwelling",
-                            "people_at_gate", "people_reclaim", "longitude", "latitude"],
+                            "people_at_gate", "people_reclaim", "longitude", "latitude", "elevation_m"],
     "passenger.journey_kpi": ["window_end", "people_in_terminal", "people_departing", "people_arriving",
                               "people_queuing", "kerb_to_airside_p50_minutes", "kerb_to_airside_p90_minutes",
                               "airside_to_boarding_p50_minutes", "arrival_to_exit_p50_minutes",
