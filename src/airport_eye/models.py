@@ -146,6 +146,16 @@ class PassengerAggregate(Model):
     count_semantics: Literal["snapshot_at_window_end"]
     passenger_count: int = Field(ge=0)
     cells: list[HeatmapCell]
+    # Optional occupancy context (see generators/passenger.py); defaults keep older records valid.
+    zone_name: str | None = None
+    area_m2: float | None = Field(default=None, gt=0)
+    density_per_100m2: float | None = Field(default=None, ge=0)
+    people_walking: int | None = Field(default=None, ge=0)
+    people_queuing: int | None = Field(default=None, ge=0)
+    people_in_service: int | None = Field(default=None, ge=0)
+    people_dwelling: int | None = Field(default=None, ge=0)
+    people_at_gate: int | None = Field(default=None, ge=0)
+    people_reclaim: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def valid_window_and_counts(self):
@@ -155,6 +165,37 @@ class PassengerAggregate(Model):
             raise ValueError("grid_id must be unique within an aggregate")
         if sum(cell.passenger_count for cell in self.cells) != self.passenger_count:
             raise ValueError("Cell counts must sum to the zone snapshot count")
+        return self
+
+
+class PassengerJourneyKpi(Model):
+    """Terminal-wide passenger journey indicators for one window (rolling percentiles)."""
+
+    kpi_id: NonEmpty
+    window_start: AwareDatetime
+    window_end: AwareDatetime
+    rolling_window_minutes: float = Field(gt=0)
+    people_in_terminal: int = Field(ge=0)
+    people_departing: int = Field(ge=0)
+    people_arriving: int = Field(ge=0)
+    people_queuing: int = Field(ge=0)
+    departures_cleared_security: int = Field(ge=0, description="Departing passengers who reached airside in the rolling window")
+    kerb_to_airside_p50_minutes: float | None = Field(default=None, ge=0)
+    kerb_to_airside_p90_minutes: float | None = Field(default=None, ge=0)
+    passengers_boarded: int = Field(ge=0)
+    airside_to_boarding_p50_minutes: float | None = Field(default=None, ge=0)
+    arrivals_exited: int = Field(ge=0)
+    arrival_to_exit_p50_minutes: float | None = Field(default=None, ge=0)
+    arrival_to_exit_p90_minutes: float | None = Field(default=None, ge=0)
+    longest_wait_touchpoint_id: str | None = None
+    longest_estimated_wait_seconds: float | None = Field(default=None, ge=0)
+    touchpoints_busy: int = Field(ge=0)
+    touchpoints_congested: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def valid_window(self):
+        if self.window_end <= self.window_start:
+            raise ValueError("window_end must follow window_start")
         return self
 
 
@@ -216,6 +257,7 @@ PAYLOAD_MODELS = {
     "passenger.touchpoint": PassengerTouchpoint,
     "passenger.position": PassengerPosition,
     "passenger.aggregate": PassengerAggregate,
+    "passenger.journey_kpi": PassengerJourneyKpi,
     "aodb.flight": AODBFlight,
     "rms.assignment": RMSAssignment,
     "acdm.milestone": ACDMMilestone,
@@ -226,6 +268,7 @@ ENTITY_FIELDS = {
     "registry.asset": "asset_id", "registry.point": "point_id",
     "facility.telemetry": "point_id", "passenger.touchpoint": "touchpoint_id",
     "passenger.position": "passenger_id", "passenger.aggregate": "zone_id",
+    "passenger.journey_kpi": "kpi_id",
     "aodb.flight": "flight_id", "rms.assignment": "assignment_id",
     "acdm.milestone": "flight_id", "aircraft.position": "aircraft_id",
 }

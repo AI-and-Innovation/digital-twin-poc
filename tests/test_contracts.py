@@ -25,7 +25,7 @@ class ContractTests(unittest.TestCase):
     def test_all_sample_types_validate(self):
         events = [EventEnvelope.model_validate_json(path.read_text(encoding="utf-8"))
                   for path in (ROOT / "samples").glob("*.json")]
-        self.assertEqual(len(events), 11)
+        self.assertEqual(len(events), 12)
         self.assertEqual({event.event_type for event in events}, set(PAYLOAD_MODELS))
 
     def test_sample_relationships(self):

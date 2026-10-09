@@ -270,8 +270,9 @@ against a real broker, nor against an actual ArcGIS Velocity/GeoEvent feed.
 
 `scripts/local_poc.sh setup` then `scripts/local_poc.sh demo` starts Kafka, a
 live per-minute publisher (`airport-eye stream`) and a local map
-(`scripts/map_viewer.py`), plus live passenger tracking (`airport-eye pax-stream`,
-every 5 s). Scope is set in `config/passenger_touchpoint.json`
+(`scripts/map_viewer.py`), driven by one terminal simulation (`airport-eye pax-stream`)
+that publishes passenger positions, checkpoint queues, zone occupancy and journey KPIs.
+`scripts/local_poc.sh map` runs the dashboard with the simulation built in, without Kafka. Scope is set in `config/passenger_touchpoint.json`
 with `include_types` (entry, check-in, security, boarding, immigration). The
 full hand-off, field table and Esri connection notes are in
 [docs/ESRI_SETUP.md](docs/ESRI_SETUP.md).

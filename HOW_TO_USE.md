@@ -72,24 +72,28 @@ enable time on `window_end` (UTC).
 **Also needs:** Docker Desktop running.
 
 ```bash
-scripts/local_poc.sh demo          # starts Kafka, the map, and the per-minute publisher
+scripts/local_poc.sh demo          # starts Kafka, the dashboard, and the terminal simulation (all four feeds)
 ```
 
-`demo` opens a live map at <http://127.0.0.1:8080> and publishes one batch of 16 records per minute
-until you press Ctrl-C. For a quick look, run `scripts/local_poc.sh demo --speed 60` (one batch per
-second). Don't use `--speed` when Esri is ingesting, because event times then run ahead of the clock.
+`demo` opens the dashboard at <http://127.0.0.1:8080> and publishes until you press Ctrl-C: passenger
+positions every 5 s, and the 16 checkpoint queue records, zone occupancy and journey KPIs every minute.
+For a quick look, run `scripts/local_poc.sh demo --speed 12`. Don't use `--speed` when Esri is ingesting,
+because event times then run ahead of the clock.
 
-## 4b. Passenger tracking
+## 4b. Terminal dashboard and passenger tracking
 
 ```bash
-scripts/local_poc.sh pax-files --minutes 15     # 15 minutes of positions to output/ as CSV and JSONL (no Kafka)
-scripts/local_poc.sh pax-files --live           # rewrite output/passenger_positions_latest.csv/.geojson every 5 s
-scripts/local_poc.sh pax                        # live to Kafka topic airport-eye.poc.esri.passenger.position
+scripts/local_poc.sh map                        # dashboard with the simulation built in (no Kafka, no Docker)
+scripts/local_poc.sh pax-files --minutes 15     # 15 minutes of all four feeds to output/ (no Kafka)
+scripts/local_poc.sh pax-files --live           # rewrite output/*_latest.* continuously
+scripts/local_poc.sh pax                        # all four feeds live to Kafka
 ```
 
-`demo` already runs the passenger tracking alongside the queue feed. On the map, passengers are small
-dots coloured by what they are doing (walking, queuing, being served, dwelling, at the gate, at baggage
-reclaim); use the floor buttons to switch between the departures (L1) and arrivals (L0) levels.
+One simulation of Terminal 1 produces four feeds: passenger positions every 5 s, and every minute the
+checkpoint queues, zone occupancy and journey times. They all come from the same passengers, so they
+agree. `demo` runs this simulation (it replaces the separate queue publisher). The dashboard at
+<http://127.0.0.1:8080> shows terminal KPIs, alerts, checkpoints against their targets, zone density, a
+heatmap, one floor at a time, lets you follow any passenger, and replays the last 90 minutes.
 Details and every field: `docs/PASSENGER_TRACKING.md`.
 
 ### See the live data

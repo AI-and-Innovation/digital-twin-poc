@@ -3,297 +3,492 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AirportEye - queues and passenger tracking</title>
+<title>AirportEye Terminal Operations</title>
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <style>
   :root {
-    --bg: #f6f7f9; --panel: #ffffff; --ink: #1c2430; --muted: #667085; --line: #e3e7ee;
-    --accent: #0b5cad; --ok: #2e9e5b; --warn: #e3a008; --bad: #d33f3f; --idle: #98a2b3;
+    --bg: #f4f6f9; --panel: #ffffff; --ink: #18202b; --muted: #5d6b7e; --line: #e2e7ee; --soft: #eef2f7;
+    --accent: #0b5cad; --ok: #2e9e5b; --warn: #d99100; --bad: #d33f3f; --idle: #98a2b3;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #11161d; --panel: #1a212b; --ink: #e8edf4; --muted: #9aa6b6; --line: #2a3340; --accent: #5aa6f0; }
+    :root { --bg: #0f141b; --panel: #171e28; --ink: #e8edf4; --muted: #9aa6b6; --line: #273141; --soft: #1e2733; --accent: #5aa6f0; }
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
-  body { font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--ink); display: flex; }
-  aside { width: 380px; max-width: 42vw; background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-width: 300px; }
-  header { padding: 16px 16px 12px; border-bottom: 1px solid var(--line); }
-  h1 { font-size: 16px; margin: 0 0 2px; }
-  .sub { color: var(--muted); font-size: 12px; }
-  .status { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; }
+  body { font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--ink); display: grid; grid-template-rows: auto 1fr auto; }
+  button { font: inherit; color: inherit; }
+
+  /* top bar */
+  .top { display: flex; align-items: center; gap: 14px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .brand h1 { font-size: 15px; margin: 0; }
+  .brand .sub { color: var(--muted); font-size: 11px; }
+  .status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--idle); flex: none; }
   .dot.live { background: var(--ok); box-shadow: 0 0 0 3px rgba(46,158,91,.2); }
-  .dot.stale { background: var(--warn); }
-  .dot.err { background: var(--bad); }
-  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 12px; }
-  .stat { background: var(--bg); border-radius: 8px; padding: 8px 10px; }
-  .stat b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
-  .stat span { color: var(--muted); font-size: 11px; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
-  .chip { border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
-  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .list { overflow: auto; flex: 1; }
+  .dot.replay { background: var(--accent); }
+  .dot.stale { background: var(--warn); } .dot.err { background: var(--bad); }
+  .clock { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink); }
+  .tiles { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+  .tile { background: var(--soft); border-radius: 8px; padding: 6px 10px; min-width: 104px; }
+  .tile b { display: block; font-size: 17px; font-variant-numeric: tabular-nums; }
+  .tile span { color: var(--muted); font-size: 11px; }
+  .tile.alert b { color: var(--bad); } .tile.click { cursor: pointer; }
+
+  /* main */
+  .main { display: grid; grid-template-columns: 400px 1fr; min-height: 0; }
+  aside { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  .tabs { display: flex; border-bottom: 1px solid var(--line); }
+  .tabs button { flex: 1; background: none; border: 0; padding: 10px 4px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; }
+  .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+  .pane { overflow: auto; flex: 1; display: none; }
+  .pane.on { display: block; }
+  .section { padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .section h3 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .hint { color: var(--muted); font-size: 12px; }
   table { width: 100%; border-collapse: collapse; }
-  th { text-align: left; font-size: 11px; color: var(--muted); font-weight: 600; padding: 8px 16px 6px; position: sticky; top: 0; background: var(--panel); }
-  td { padding: 7px 16px; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
-  tr.row { cursor: pointer; }
-  tr.row:hover td { background: var(--bg); }
+  th { text-align: left; font-size: 11px; color: var(--muted); font-weight: 600; padding: 6px 14px; position: sticky; top: 0; background: var(--panel); z-index: 1; }
+  td { padding: 6px 14px; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; vertical-align: middle; }
   td.num, th.num { text-align: right; }
-  .name { font-weight: 500; }
-  .type { color: var(--muted); font-size: 11px; }
-  .pill { display: inline-block; min-width: 28px; text-align: center; padding: 1px 8px; border-radius: 999px; color: #fff; font-weight: 600; }
-  main { flex: 1; position: relative; min-width: 0; }
+  tr.row { cursor: pointer; } tr.row:hover td { background: var(--soft); }
+  .name { font-weight: 500; } .type { color: var(--muted); font-size: 11px; }
+  .pill { display: inline-block; min-width: 28px; text-align: center; padding: 1px 7px; border-radius: 999px; color: #fff; font-weight: 600; font-size: 12px; }
+  .bar { height: 6px; background: var(--soft); border-radius: 3px; overflow: hidden; margin-top: 3px; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  .alert-row { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; }
+  .timeline { list-style: none; margin: 0; padding: 0; }
+  .timeline li { display: grid; grid-template-columns: 44px 12px 1fr; gap: 6px; padding: 4px 0; align-items: start; }
+  .timeline .t { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .timeline i { width: 10px; height: 10px; border-radius: 50%; margin-top: 3px; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; }
+  .kv dt { color: var(--muted); } .kv dd { margin: 0; }
+  .flow { display: grid; gap: 6px; }
+  .flow .box { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--soft); }
+  .flow .box b { display: block; font-size: 12px; }
+  .flow .arrow { text-align: center; color: var(--muted); line-height: 1; }
+  .btn { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  .btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  /* map */
+  .mapwrap { position: relative; min-width: 0; min-height: 0; }
   #map { position: absolute; inset: 0; background: #dfe5ec; }
-  .legend { position: absolute; z-index: 500; right: 12px; bottom: 28px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 12px; }
-  .legend div { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
-  .legend #paxLegend { display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; margin: 0; }
-  .legend #paxLegend div { margin: 2px 0; }
-  .legend i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
-  .banner { position: absolute; z-index: 500; left: 50%; top: 12px; transform: translateX(-50%); background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,.12); }
-  .leaflet-popup-content { margin: 12px 14px; font: 13px/1.4 system-ui, sans-serif; }
-  .pop h3 { margin: 0 0 2px; font-size: 14px; }
-  .pop .meta { color: #667085; font-size: 11px; margin-bottom: 8px; }
-  .pop dl { display: grid; grid-template-columns: auto auto; gap: 2px 14px; margin: 0; }
+  .ctl { position: absolute; z-index: 500; top: 10px; right: 10px; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+  .group { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px; display: flex; gap: 4px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  .legend { position: absolute; z-index: 500; left: 10px; bottom: 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 11px; max-width: 320px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  .legend .row { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 3px 0; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+  .legend .ramp { display: inline-block; width: 120px; height: 8px; vertical-align: middle; border-radius: 2px; background: linear-gradient(90deg, #e7f0fb, #6aa3dc, #3b5bb5, #6a2c91, #b0124f); }
+  .banner { position: absolute; z-index: 600; left: 50%; top: 10px; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+  .leaflet-popup-content { margin: 10px 12px; font: 12px/1.4 system-ui, sans-serif; }
+  .pop h4 { margin: 0 0 2px; font-size: 13px; }
+  .pop .meta { color: #667085; font-size: 11px; margin-bottom: 6px; }
+  .pop dl { display: grid; grid-template-columns: auto auto; gap: 1px 12px; margin: 0; }
   .pop dt { color: #667085; } .pop dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
-  @media (max-width: 760px) { body { flex-direction: column-reverse; } aside { width: 100%; max-width: none; height: 45vh; border-right: 0; border-top: 1px solid var(--line); } main { height: 55vh; flex: none; } }
+
+  /* replay */
+  .replay { display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: var(--panel); border-top: 1px solid var(--line); }
+  .replay input[type=range] { flex: 1; }
+  .replay .lbl { font-variant-numeric: tabular-nums; min-width: 160px; color: var(--muted); }
+
+  @media (max-width: 900px) {
+    .main { grid-template-columns: 1fr; grid-template-rows: 55vh auto; }
+    aside { order: 2; border-right: 0; border-top: 1px solid var(--line); }
+    .mapwrap { order: 1; min-height: 55vh; }
+    .tiles { margin-left: 0; } .tile { min-width: 90px; }
+    .legend { display: none; }
+  }
 </style>
 </head>
 <body>
-<aside>
-  <header>
-    <h1>AirportEye - queues and passenger tracking</h1>
-    <div class="sub">Local view of the Esri feed (flat JSON on Kafka). Not an Esri product.</div>
-    <div class="status"><span class="dot" id="dot"></span><span id="statusText">Connecting...</span></div>
-    <div class="stats">
-      <div class="stat"><b id="sTouch">0</b><span>touchpoints</span></div>
-      <div class="stat"><b id="sMsgs">0</b><span>records received</span></div>
-      <div class="stat"><b id="sQueue">0</b><span>people queuing</span></div>
-      <div class="stat"><b id="sPax">0</b><span>passengers tracked</span></div>
+<div class="top">
+  <div class="brand">
+    <h1>AirportEye - RGIA Terminal 1 operations</h1>
+    <div class="sub">Local view of the Esri feeds. Synthetic passengers. Not an Esri product.</div>
+  </div>
+  <div class="status"><span class="dot" id="dot"></span><span id="statusText">Connecting...</span> <span class="clock" id="clock"></span></div>
+  <div class="tiles">
+    <div class="tile"><b id="kIn">-</b><span>in terminal</span></div>
+    <div class="tile"><b id="kQ">-</b><span>queuing now</span></div>
+    <div class="tile"><b id="kK2A">-</b><span>kerb to airside, median</span></div>
+    <div class="tile"><b id="kA2E">-</b><span>arrival to exit, median</span></div>
+    <div class="tile"><b id="kLong">-</b><span id="kLongName">longest wait</span></div>
+    <div class="tile click" id="alertTile"><b id="kAlerts">-</b><span>alerts</span></div>
+  </div>
+</div>
+
+<div class="main">
+  <aside>
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="checkpoints">Checkpoints</button>
+      <button role="tab" aria-selected="false" data-tab="zones">Zones</button>
+      <button role="tab" aria-selected="false" data-tab="passenger">Passenger</button>
+      <button role="tab" aria-selected="false" data-tab="how">How it works</button>
     </div>
-    <div class="chips" id="floors" style="padding:10px 0 0;border:0"></div>
-  </header>
-  <div class="chips" id="chips"></div>
-  <div class="list">
-    <table>
-      <thead><tr><th>Touchpoint</th><th class="num">Queue</th><th class="num">Est. wait</th></tr></thead>
-      <tbody id="rows"></tbody>
-    </table>
+
+    <div class="pane on" id="pane-checkpoints">
+      <div class="section" id="alertsBox"><h3>Alerts</h3><div id="alerts" class="hint">None</div></div>
+      <table>
+        <thead><tr><th>Checkpoint</th><th class="num">Queue</th><th class="num">Wait</th><th class="num">Open</th></tr></thead>
+        <tbody id="tpRows"></tbody>
+      </table>
+    </div>
+
+    <div class="pane" id="pane-zones">
+      <div class="section"><div class="hint">People in each zone at the last minute, with density per 100 m². The map colours zones by density on the floor you are viewing.</div></div>
+      <table>
+        <thead><tr><th>Zone</th><th class="num">People</th><th class="num">/100 m²</th></tr></thead>
+        <tbody id="zoneRows"></tbody>
+      </table>
+    </div>
+
+    <div class="pane" id="pane-passenger">
+      <div class="section" id="paxBox"></div>
+    </div>
+
+    <div class="pane" id="pane-how">
+      <div class="section">
+        <h3>What you are looking at</h3>
+        <p>A simulation of Terminal 1 that produces the same records real sensors and an Esri pipeline would. Every number on this page comes from the same simulated passengers, so the queue counts, zone counts and dots always agree.</p>
+        <div class="flow">
+          <div class="box"><b>1. Passengers</b>Flights create passengers. They walk the terminal's walkways, queue at entry, check-in, security and immigration, dwell airside, board, or collect bags and leave.</div>
+          <div class="arrow">&darr;</div>
+          <div class="box"><b>2. Four feeds (Kafka topics or files)</b>Positions every 5 s &middot; checkpoint queues every minute &middot; zone occupancy every minute &middot; journey KPIs every minute. Flat JSON with longitude/latitude, the shape ArcGIS Velocity ingests.</div>
+          <div class="arrow">&darr;</div>
+          <div class="box"><b>3. Analysis</b>This page does what Velocity and ArcGIS Dashboards would: one floor at a time, density colouring, heatmap, alerts when a checkpoint passes its wait target, individual tracks and a replay.</div>
+          <div class="arrow">&darr;</div>
+          <div class="box"><b>4. Action</b>Open another lane where a queue is over target, send staff to a crowded zone, watch how long passengers take from kerb to airside.</div>
+        </div>
+      </div>
+      <div class="section">
+        <h3>Where the map comes from</h3>
+        <p>Terminal outline, International Departures and GA buildings and the bus gates: OpenStreetMap (&copy; OpenStreetMap contributors, ODbL). Floors, zones, checkpoints and walkways inside are a <b>schematic</b>, not the floor plan. GHIAL drawings replace them without changing anything else.</p>
+        <h3>Real sensors would be</h3>
+        <p>3D people counters at checkpoints (queue length and wait), Wi-Fi/BLE or camera analytics for positions (anonymised), boarding-pass and DigiYatra scans for checkpoint events.</p>
+      </div>
+    </div>
+  </aside>
+
+  <div class="mapwrap">
+    <div id="map"></div>
+    <div class="banner" id="banner" hidden></div>
+    <div class="ctl">
+      <div class="group" id="floorBtns"></div>
+      <div class="group" id="layerBtns"></div>
+    </div>
+    <div class="legend" id="legend"></div>
   </div>
-</aside>
-<main>
-  <div id="map"></div>
-  <div class="banner" id="banner" hidden></div>
-  <div class="legend">
-    <div style="font-weight:600">Touchpoint queues</div>
-    <div><i style="background:var(--ok)"></i>Normal (under 60% of wait target)</div>
-    <div><i style="background:var(--warn)"></i>Busy (60-100%)</div>
-    <div><i style="background:var(--bad)"></i>Congested (target breached)</div>
-    <div><i style="background:#8a94a6"></i>No wait target set</div>
-    <div style="font-weight:600;margin-top:6px">Passengers <span id="paxCounts" class="sub"></span></div>
-    <div id="paxLegend"></div>
-    <div class="sub" style="color:var(--muted);max-width:260px">Outlines: OpenStreetMap. Interior layout is schematic. All passengers are synthetic.</div>
-  </div>
-</main>
+</div>
+
+<div class="replay">
+  <button class="btn" id="liveBtn" aria-pressed="true">Live</button>
+  <input type="range" id="slider" min="0" max="0" value="0" disabled aria-label="Replay time">
+  <span class="lbl" id="replayLbl">Replay builds up as minutes arrive</span>
+</div>
+
 <script src="vendor/leaflet/leaflet.js"></script>
 <script>
 (function () {
-  var COLORS = { ok: "#2e9e5b", warn: "#e3a008", bad: "#d33f3f", none: "#8a94a6" };
-  // Colour by the record's status when the feed has one (queue health against the wait target);
-  // otherwise fall back to raw queue length.
-  function bandOf(p) {
-    if (p.status) return { normal: "ok", busy: "warn", congested: "bad", no_target: "none" }[p.status] || "none";
-    var q = p.queue_length || 0; return q <= 2 ? "ok" : q <= 7 ? "warn" : "bad";
-  }
-  function secs(v) { return v === null || v === undefined ? "-" : (v >= 120 ? (v / 60).toFixed(1) + " min" : Math.round(v) + " s"); }
-  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
-  function pretty(t) { return String(t).replace(/_/g, " "); }
-  function nice(id) { return id.replace(/^SYN-HYD-/, ""); }
+  "use strict";
+  var STATUS = { normal: "#2e9e5b", busy: "#d99100", congested: "#d33f3f", no_target: "#8a94a6" };
+  var ACT = { walking: "#2f6fde", queuing: "#f08c00", in_service: "#9c36b5", dwelling: "#0ca678", at_gate: "#495057", reclaim: "#e8590c", boarded: "#495057", exited: "#495057" };
+  var ACT_LABEL = { walking: "Walking", queuing: "Queuing", in_service: "Being served", dwelling: "Shops / seating", at_gate: "At gate", reclaim: "Baggage reclaim", boarded: "Boarded", exited: "Left the terminal" };
+  var RAMP = ["#e7f0fb", "#6aa3dc", "#3b5bb5", "#6a2c91", "#b0124f"];
+  var DENSE = 25; // people per 100 m2 that raises a zone alert
+  var FOLLOW_HINT = '<div class="hint">Click on or next to a passenger dot on the map to follow them through the terminal. Their path is drawn on the map and their journey appears here.</div>';
 
-  var map = L.map("map", { zoomControl: true }).setView([17.2356, 78.4290], 17);
-  map.createPane("layout").style.zIndex = 350;
-  map.createPane("touch").style.zIndex = 450;
-  map.createPane("pax").style.zIndex = 460;
-  var tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19, attribution: "&copy; OpenStreetMap contributors"
-  }).addTo(map);
+  function esc(s) { return String(s === null || s === undefined ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function nice(id) { return id ? String(id).replace(/^SYN-HYD-/, "").replace(/^ZONE-/, "") : "-"; }
+  function secs(v) { return v === null || v === undefined ? "-" : (v >= 90 ? (v / 60).toFixed(1) + " min" : Math.round(v) + " s"); }
+  function mins(v) { return v === null || v === undefined ? "-" : v.toFixed(1) + " min"; }
+  function hhmm(ms) { if (!ms) return ""; return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); }
+  function rampColor(density) { return RAMP[Math.max(0, Math.min(RAMP.length - 1, Math.floor(density / (DENSE / 4))))]; }
+  function $(id) { return document.getElementById(id); }
+
+  // ---- map and layers ----
+  var map = L.map("map", { zoomControl: true, preferCanvas: true }).setView([17.2356, 78.4290], 17);
+  ["zones", "heat", "trail", "touch", "pax"].forEach(function (p, i) { map.createPane(p).style.zIndex = 400 + i * 10; });
+  var tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 20, maxNativeZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
   var tileErrors = 0;
-  tiles.on("tileerror", function () { tileErrors++; if (tileErrors === 3) showBanner("Base map tiles need internet. Points still plot without them.", 8000); });
+  tiles.on("tileerror", function () { if (++tileErrors === 3) banner("Base map tiles need internet. The terminal and data still draw without them.", 8000); });
+  var buildingLayer = L.layerGroup().addTo(map), zoneLayer = L.layerGroup().addTo(map), heatLayer = L.layerGroup().addTo(map),
+      trailLayer = L.layerGroup().addTo(map), touchLayer = L.layerGroup().addTo(map), paxLayer = L.layerGroup().addTo(map);
+  var paxRenderer = L.canvas({ pane: "pax", padding: 0.3 }), heatRenderer = L.canvas({ pane: "heat", padding: 0.3 });
 
-  var layer = L.layerGroup().addTo(map);
-  var markers = {}, byId = {}, hidden = {}, fitted = false;
+  var layout = null, floor = "L1", data = null, live = true, following = null, followData = null, fitted = false;
+  var show = { zones: true, heat: false, pax: true, touch: true };
+  var zonePolys = {}, touchMarkers = {};
 
-  function showBanner(text, ms) {
-    var b = document.getElementById("banner"); b.textContent = text; b.hidden = false;
-    if (ms) setTimeout(function () { b.hidden = true; }, ms);
-  }
+  function banner(text, ms) { var b = $("banner"); b.textContent = text; b.hidden = false; if (ms) setTimeout(function () { b.hidden = true; }, ms); }
+  function setFloor(f) { if (f && f !== floor) { floor = f; buttons(); drawLayout(); render(); } }
 
-  function spark(hist) {
-    var pts = hist.filter(function (h) { return h[1] !== null; });
-    if (pts.length < 2) return "";
-    var max = Math.max.apply(null, pts.map(function (h) { return h[1]; })) || 1, w = 200, h = 34;
-    var d = pts.map(function (p, i) { return (i ? "L" : "M") + (i * w / (pts.length - 1)).toFixed(1) + " " + (h - 2 - p[1] / max * (h - 6)).toFixed(1); }).join(" ");
-    return '<svg width="' + w + '" height="' + h + '" style="margin-top:8px"><path d="' + d + '" fill="none" stroke="#0b5cad" stroke-width="1.6"/></svg><div class="meta">queue length, last ' + pts.length + ' min</div>';
-  }
-
-  function popup(p) {
-    var rows = [["Queue length", p.queue_length + (p.queue_limit !== null && p.queue_limit !== undefined ? " (limit " + p.queue_limit + ")" : "")],
-      ["In service", p.passengers_in_service + (p.service_channels ? " of " + p.service_channels : "")],
-      ["Utilization", p.utilization_pct === undefined || p.utilization_pct === null ? "-" : p.utilization_pct + "%"],
-      ["Processed (last min)", p.processed_passengers],
-      ["Served since midnight", p.throughput_since_midnight === undefined || p.throughput_since_midnight === null ? "-" : p.throughput_since_midnight.toLocaleString()],
-      ["Estimated wait", secs(p.estimated_wait_seconds)], ["95th pct wait (30 min)", secs(p.p95_wait_seconds)],
-      ["Operational target", secs(p.target_wait_seconds)], ["AERA existing / proposed", secs(p.aera_existing_wait_seconds) + " / " + secs(p.aera_proposed_wait_seconds)],
-      ["Status", p.status ? p.status.replace("_", " ") + (p.sla_breached ? " - target breached" : "") : "-"],
-      ["Avg wait / service", secs(p.avg_wait_time_seconds) + " / " + secs(p.avg_processing_time_seconds)],
-      ["Zone", nice(p.zone_id)], ["Time (UTC)", String(p.event_time).replace("T", " ").replace("Z", "")]];
-    return '<div class="pop"><h3>' + esc(p.touchpoint_name || nice(p.entity_id)) + '</h3><div class="meta">' + esc(pretty(p.touchpoint_type)) + (p.flow ? " / " + esc(p.flow) : "") + " - " + esc(p.latitude) + ", " + esc(p.longitude) + "</div><dl>" +
-      rows.map(function (r) { return "<dt>" + esc(r[0]) + "</dt><dd>" + esc(r[1]) + "</dd>"; }).join("") + "</dl>" + spark(p.history || []) + "</div>";
-  }
-
-  function render(state) {
-    var feats = state.features, st = state.stats, total = 0, types = {};
-    byId = {};
-    feats.forEach(function (f) { var p = f.properties; byId[p.entity_id] = f; types[p.touchpoint_type] = (types[p.touchpoint_type] || 0) + 1; });
-
-    // chips
-    var chips = document.getElementById("chips");
-    Object.keys(types).sort().forEach(function (t) {
-      var id = "chip-" + t, el = document.getElementById(id);
-      if (!el) {
-        el = document.createElement("button"); el.className = "chip"; el.id = id; el.setAttribute("aria-pressed", "true");
-        el.onclick = function () { hidden[t] = !hidden[t]; el.setAttribute("aria-pressed", String(!hidden[t])); redraw(); };
-        chips.appendChild(el);
-      }
-      el.textContent = pretty(t) + " (" + types[t] + ")";
+  // ---- controls ----
+  function buttons() {
+    var fb = $("floorBtns"); fb.innerHTML = "";
+    var floors = layout && layout.floors ? Object.keys(layout.floors).sort().reverse() : ["L1", "L0"];
+    floors.forEach(function (f) {
+      var b = document.createElement("button"); b.className = "btn"; b.setAttribute("aria-pressed", String(floor === f));
+      b.textContent = f + (f === "L1" ? " Departures" : f === "L0" ? " Arrivals" : "");
+      b.onclick = function () { setFloor(f); };
+      fb.appendChild(b);
     });
-    last = feats; redraw();
-    var visible = feats.filter(function (f) { return !hidden[f.properties.touchpoint_type]; });
-    visible.forEach(function (f) { total += f.properties.queue_length || 0; });
-    document.getElementById("sTouch").textContent = visible.length;
-    document.getElementById("sMsgs").textContent = st.received;
-    document.getElementById("sQueue").textContent = total;
+    var lb = $("layerBtns"); lb.innerHTML = "";
+    [["zones", "Zone density"], ["heat", "Heatmap"], ["pax", "Passengers"], ["touch", "Checkpoints"]].forEach(function (x) {
+      var b = document.createElement("button"); b.className = "btn"; b.textContent = x[1]; b.setAttribute("aria-pressed", String(show[x[0]]));
+      b.onclick = function () { show[x[0]] = !show[x[0]]; buttons(); render(); };
+      lb.appendChild(b);
+    });
+  }
 
-    var dot = document.getElementById("dot"), txt = document.getElementById("statusText");
-    if (st.error) { dot.className = "dot err"; txt.textContent = st.error; }
-    else if (st.received === 0) { dot.className = "dot"; txt.textContent = "Waiting for records from " + st.source; }
-    else if (st.seconds_since_last > 150) { dot.className = "dot stale"; txt.textContent = "No new records for " + Math.round(st.seconds_since_last) + "s - " + st.source; }
+  document.querySelectorAll(".tabs button").forEach(function (b) { b.onclick = function () { selectTab(b.getAttribute("data-tab")); }; });
+  function selectTab(name) {
+    document.querySelectorAll(".tabs button").forEach(function (x) { x.setAttribute("aria-selected", String(x.getAttribute("data-tab") === name)); });
+    document.querySelectorAll(".pane").forEach(function (p) { p.classList.toggle("on", p.id === "pane-" + name); });
+  }
+  $("alertTile").onclick = function () { selectTab("checkpoints"); $("pane-checkpoints").scrollTop = 0; };
+
+  // ---- layout ----
+  function drawLayout() {
+    buildingLayer.clearLayers(); zoneLayer.clearLayers(); zonePolys = {};
+    if (!layout) return;
+    var bounds = null;
+    layout.features.forEach(function (f) {
+      var p = f.properties;
+      if (p.kind === "building") {
+        var g = L.geoJSON(f, { pane: "zones", style: { color: "#1c2430", weight: 2, fillColor: "#ffffff", fillOpacity: 0.55 } }).addTo(buildingLayer);
+        bounds = bounds ? bounds.extend(g.getBounds()) : g.getBounds();
+      } else if (p.floor === floor) {
+        var z = L.geoJSON(f, { pane: "zones", style: { color: "#3b5bb5", weight: 0.8, fillColor: "#e7f0fb", fillOpacity: 0 } })
+          .bindTooltip(esc(p.name), { sticky: true }).addTo(zoneLayer);
+        (zonePolys[p.zone_id] = zonePolys[p.zone_id] || []).push({ layer: z, name: p.name });
+      }
+    });
+    if (!fitted && bounds) { map.fitBounds(bounds, { padding: [20, 20] }); fitted = true; }
+  }
+
+  // ---- rendering ----
+  function render() {
+    if (!data) { renderFollow(); return; }
+    renderTop(); renderZones(); renderTouchpoints(); renderPax(); renderHeat(); renderLegend(); renderFollow();
+  }
+
+  function renderTop() {
+    var k = data.kpi || {}, st = data.stats || {};
+    $("kIn").textContent = k.people_in_terminal !== undefined ? k.people_in_terminal.toLocaleString() : (data.positions.rows.length || "-");
+    $("kQ").textContent = k.people_queuing !== undefined ? k.people_queuing : "-";
+    $("kK2A").textContent = mins(k.kerb_to_airside_p50_minutes);
+    $("kA2E").textContent = mins(k.arrival_to_exit_p50_minutes);
+    $("kLong").textContent = secs(k.longest_estimated_wait_seconds);
+    $("kLongName").textContent = k.longest_wait_touchpoint_id ? "longest wait: " + nice(k.longest_wait_touchpoint_id).toLowerCase() : "longest wait";
+    $("clock").textContent = data.t ? hhmm(data.t) : "";
+    var dot = $("dot"), txt = $("statusText"), total = 0;
+    Object.keys(st.received || {}).forEach(function (key) { total += st.received[key]; });
+    if (data.mode === "replay") { dot.className = "dot replay"; txt.textContent = "Replay"; }
+    else if (st.error) { dot.className = "dot err"; txt.textContent = st.error; }
+    else if (!total) { dot.className = "dot"; txt.textContent = "Waiting for data from " + (st.source || "the feed"); }
+    else if (st.seconds_since_last > 30) { dot.className = "dot stale"; txt.textContent = "No new data for " + Math.round(st.seconds_since_last) + " s"; }
     else { dot.className = "dot live"; txt.textContent = "Live - " + st.source; }
   }
 
-  var last = [];
-  function redraw() {
-    var seen = {}, bounds = [];
-    last.forEach(function (f) {
-      var p = f.properties, id = p.entity_id;
-      if (hidden[p.touchpoint_type]) return;
-      if (floor !== "all" && p.floor && p.floor !== floor) return;
-      seen[id] = true;
-      var ll = [f.geometry.coordinates[1], f.geometry.coordinates[0]], q = p.queue_length || 0;
-      var style = { radius: 9 + Math.min(14, Math.sqrt(q) * 3.2), color: "#fff", weight: 2, fillColor: COLORS[bandOf(p)], fillOpacity: 0.55 };
-      if (floor !== "all" && p.floor && p.floor !== floor) { return; }
-      if (!markers[id]) { markers[id] = L.circleMarker(ll, Object.assign({ pane: "touch" }, style)).bindPopup("", { maxWidth: 280 }).addTo(layer); }
-      else { markers[id].setLatLng(ll).setStyle(style); if (!layer.hasLayer(markers[id])) layer.addLayer(markers[id]); }
-      markers[id].setPopupContent(popup(p));
-      bounds.push(ll);
-    });
-    Object.keys(markers).forEach(function (id) { if (!seen[id]) layer.removeLayer(markers[id]); });
-    if (!fitted && bounds.length && !layoutBounds) { map.fitBounds(bounds, { padding: [60, 60], maxZoom: 18 }); fitted = true; }
-
-    var rows = last.filter(function (f) { return !hidden[f.properties.touchpoint_type]; })
-      .sort(function (a, b) { return (b.properties.queue_length || 0) - (a.properties.queue_length || 0) || a.properties.entity_id.localeCompare(b.properties.entity_id); });
-    var tb = document.getElementById("rows");
-    tb.innerHTML = rows.map(function (f) {
-      var p = f.properties, q = p.queue_length || 0;
-      return '<tr class="row" data-id="' + esc(p.entity_id) + '"><td><div class="name">' + esc(p.touchpoint_name || nice(p.entity_id)) + '</div><div class="type">' + esc(pretty(p.touchpoint_type)) +
-        '</div></td><td class="num"><span class="pill" style="background:' + COLORS[bandOf(p)] + '">' + q + '</span></td><td class="num">' +
-        secs(p.estimated_wait_seconds === undefined ? p.avg_wait_time_seconds : p.estimated_wait_seconds) + "</td></tr>";
-    }).join("");
+  function spark(h) {
+    var pts = h.filter(function (x) { return x[1] !== null; }); if (pts.length < 2) return "";
+    var max = Math.max.apply(null, pts.map(function (x) { return x[1]; })) || 1, w = 220, hh = 36;
+    var d = pts.map(function (x, i) { return (i ? "L" : "M") + (i * w / (pts.length - 1)).toFixed(1) + " " + (hh - 2 - x[1] / max * (hh - 6)).toFixed(1); }).join(" ");
+    return '<svg width="' + w + '" height="' + hh + '" style="margin-top:6px"><path d="' + d + '" fill="none" stroke="#0b5cad" stroke-width="1.6"/></svg><div class="meta">queue length, last ' + pts.length + " min (max " + max + ")</div>";
+  }
+  function tpPopup(p) {
+    var rows = [["Queue", p.queue_length + (p.queue_limit !== null && p.queue_limit !== undefined ? " (limit " + p.queue_limit + ")" : "")],
+      ["Open lanes / in service", (p.service_channels || "-") + " / " + p.passengers_in_service],
+      ["Estimated wait", secs(p.estimated_wait_seconds)], ["95th pct wait (30 min)", secs(p.p95_wait_seconds)],
+      ["Measured wait (last min)", secs(p.avg_wait_time_seconds)], ["Processing time", secs(p.avg_processing_time_seconds)],
+      ["Target", secs(p.target_wait_seconds)], ["Served last minute", p.processed_passengers],
+      ["Served since midnight", p.throughput_since_midnight === null || p.throughput_since_midnight === undefined ? "-" : p.throughput_since_midnight.toLocaleString()],
+      ["Status", (p.status || "-").replace("_", " ")]];
+    return '<div class="pop"><h4>' + esc(p.touchpoint_name || nice(p.entity_id)) + '</h4><div class="meta">' + esc((p.touchpoint_type || "").replace("_", " ")) + " &middot; floor " + esc(p.floor) + "</div><dl>" +
+      rows.map(function (r) { return "<dt>" + esc(r[0]) + "</dt><dd>" + esc(r[1]) + "</dd>"; }).join("") + "</dl>" + spark(p.history || []) + "</div>";
   }
 
-  document.getElementById("rows").addEventListener("click", function (e) {
-    var tr = e.target.closest("tr.row"); if (!tr) return;
-    var m = markers[tr.getAttribute("data-id")]; if (!m) return;
-    map.flyTo(m.getLatLng(), Math.max(map.getZoom(), 18), { duration: 0.6 }); m.openPopup();
+  function renderTouchpoints() {
+    var order = { congested: 0, busy: 1, normal: 2, no_target: 3 };
+    var tps = (data.touchpoints || []).slice().sort(function (a, b) { var oa = a.status in order ? order[a.status] : 3, ob = b.status in order ? order[b.status] : 3;
+      return (oa - ob) || (b.queue_length - a.queue_length); });
+    var seen = {};
+    tps.forEach(function (p) {
+      var id = p.entity_id;
+      if (!show.touch || (p.floor && p.floor !== floor) || p.longitude === null || p.longitude === undefined) return;
+      seen[id] = true;
+      var q = p.queue_length || 0, style = { pane: "touch", radius: 7 + Math.min(14, Math.sqrt(q) * 2.6), color: "#fff", weight: 2, fillColor: STATUS[p.status] || STATUS.no_target, fillOpacity: 0.8 };
+      var m = touchMarkers[id];
+      if (!m) { m = touchMarkers[id] = L.circleMarker([p.latitude, p.longitude], style).bindPopup("", { maxWidth: 300 }); }
+      m.setLatLng([p.latitude, p.longitude]).setStyle(style).setPopupContent(tpPopup(p));
+      if (!touchLayer.hasLayer(m)) touchLayer.addLayer(m);
+    });
+    Object.keys(touchMarkers).forEach(function (id) { if (!seen[id]) touchLayer.removeLayer(touchMarkers[id]); });
+
+    $("tpRows").innerHTML = tps.map(function (p) {
+      return '<tr class="row" data-id="' + esc(p.entity_id) + '"><td><div class="name">' + esc(p.touchpoint_name || nice(p.entity_id)) + '</div><div class="type">' + esc((p.touchpoint_type || "").replace("_", " ")) + " &middot; " + esc(p.floor || "") +
+        '</div></td><td class="num"><span class="pill" style="background:' + (STATUS[p.status] || STATUS.no_target) + '">' + (p.queue_length || 0) + '</span></td><td class="num">' + secs(p.estimated_wait_seconds) +
+        '</td><td class="num">' + (p.service_channels || "-") + "</td></tr>";
+    }).join("");
+
+    var alerts = [];
+    tps.forEach(function (p) {
+      if (p.status === "congested" || p.status === "busy")
+        alerts.push('<div class="alert-row"><span class="pill" style="background:' + STATUS[p.status] + '">' + (p.status === "busy" ? "busy" : "over") + "</span><span><b>" + esc(p.touchpoint_name || nice(p.entity_id)) + "</b>: " + p.queue_length + " waiting, about " + secs(p.estimated_wait_seconds) + " (target " + secs(p.target_wait_seconds) + ")</span></div>");
+    });
+    (data.zones || []).forEach(function (z) {
+      if ((z.density_per_100m2 || 0) >= DENSE) alerts.push('<div class="alert-row"><span class="pill" style="background:' + RAMP[4] + '">crowded</span><span><b>' + esc(z.zone_name || nice(z.zone_id)) + "</b>: " + z.passenger_count + " people, " + z.density_per_100m2.toFixed(1) + " per 100 m&sup2;</span></div>");
+    });
+    $("alerts").innerHTML = alerts.length ? alerts.join("") : "None. Every checkpoint is within its wait target.";
+    $("kAlerts").textContent = alerts.length;
+    $("alertTile").classList.toggle("alert", alerts.length > 0);
+  }
+  $("tpRows").addEventListener("click", function (e) {
+    var tr = e.target.closest("tr.row"); if (!tr || !data) return;
+    var p = (data.touchpoints || []).filter(function (x) { return x.entity_id === tr.getAttribute("data-id"); })[0]; if (!p) return;
+    setFloor(p.floor);
+    map.flyTo([p.latitude, p.longitude], 19, { duration: 0.6 });
+    setTimeout(function () { var m = touchMarkers[p.entity_id]; if (m) m.openPopup(); }, 700);
   });
 
-  function tick() {
-    fetch("api/state", { cache: "no-store" }).then(function (r) { return r.json(); }).then(render).catch(function () {
-      var dot = document.getElementById("dot"); dot.className = "dot err"; document.getElementById("statusText").textContent = "Viewer server not reachable";
+  function renderZones() {
+    var zones = (data.zones || []).filter(function (z) { return z.passenger_count > 0; })
+      .sort(function (a, b) { return (b.density_per_100m2 || 0) - (a.density_per_100m2 || 0); });
+    var max = Math.max.apply(null, zones.map(function (z) { return z.density_per_100m2 || 0; }).concat([1]));
+    $("zoneRows").innerHTML = zones.length ? zones.map(function (z) {
+      return '<tr class="row" data-zone="' + esc(z.zone_id) + '"><td><div class="name">' + esc(z.zone_name || nice(z.zone_id)) + '</div><div class="type">' + esc(z.floor) + " &middot; " +
+        (z.people_queuing || 0) + " queuing, " + (z.people_dwelling || 0) + " dwelling, " + (z.people_walking || 0) + " walking" +
+        '</div><div class="bar"><i style="width:' + Math.round((z.density_per_100m2 || 0) / max * 100) + "%;background:" + rampColor(z.density_per_100m2 || 0) + '"></i></div></td><td class="num">' + z.passenger_count +
+        '</td><td class="num">' + (z.density_per_100m2 || 0).toFixed(1) + "</td></tr>";
+    }).join("") : '<tr><td colspan="3" class="hint">Zone counts arrive once a minute.</td></tr>';
+    var byId = {}; (data.zones || []).forEach(function (z) { byId[z.zone_id] = z; });
+    Object.keys(zonePolys).forEach(function (id) {
+      var z = byId[id], d = z ? z.density_per_100m2 || 0 : 0;
+      zonePolys[id].forEach(function (zp) {
+        zp.layer.setStyle({ fillColor: rampColor(d), fillOpacity: show.zones ? (z && z.passenger_count ? 0.55 : 0.06) : 0, opacity: show.zones ? 0.6 : 0.15 });
+        zp.layer.setTooltipContent(esc(zp.name) + "<br>" + (z ? z.passenger_count + " people &middot; " + d.toFixed(1) + " per 100 m&sup2;" : "no data yet"));
+      });
     });
   }
-  // ---- terminal layout, floors and passenger tracking ----
-  var floor = "all", layoutBounds = null, layoutLayer = L.layerGroup().addTo(map), layoutData = null;
-  var ACT = { walking: "#2f6fde", queuing: "#f08c00", in_service: "#9c36b5", dwelling: "#0ca678", at_gate: "#495057", reclaim: "#e8590c" };
-  var ACT_LABEL = { walking: "Walking", queuing: "Queuing", in_service: "Being served", dwelling: "Dwelling (shops, seats)", at_gate: "At gate", reclaim: "Baggage reclaim" };
-  var paxRenderer = L.canvas({ pane: "pax", padding: 0.2 }), paxLayer = L.layerGroup().addTo(map), paxRows = [], paxFields = [];
+  $("zoneRows").addEventListener("click", function (e) {
+    var tr = e.target.closest("tr.row"); if (!tr || !data) return;
+    var id = tr.getAttribute("data-zone"), z = (data.zones || []).filter(function (x) { return x.zone_id === id; })[0];
+    if (z) setFloor(z.floor);
+    var polys = zonePolys[id]; if (!polys) return;
+    var b = polys[0].layer.getBounds(); polys.forEach(function (p) { b.extend(p.layer.getBounds()); });
+    map.flyToBounds(b, { padding: [40, 40], duration: 0.6 });
+  });
 
-  function drawLayout() {
-    layoutLayer.clearLayers();
-    if (!layoutData) return;
-    var all = [];
-    layoutData.features.forEach(function (f) {
-      var pr = f.properties, building = pr.kind === "building";
-      if (!building && floor !== "all" && pr.floor !== floor) return;
-      var poly = L.geoJSON(f, { pane: "layout", style: building
-        ? { color: "#1c2430", weight: 2, fill: true, fillColor: "#ffffff", fillOpacity: 0.35 }
-        : { color: "#0b5cad", weight: 0.8, dashArray: "3 3", fillColor: "#0b5cad", fillOpacity: 0.04 } });
-      if (!building) poly.bindTooltip(esc(pr.name) + " (" + esc(pr.floor) + ")", { sticky: true });
-      poly.addTo(layoutLayer);
-      if (building) all.push(poly.getBounds());
+  function idx(name) { return data.positions.fields.indexOf(name); }
+  function renderPax() {
+    paxLayer.clearLayers();
+    if (!show.pax) return;
+    var iF = idx("floor"), iA = idx("activity"), iX = idx("longitude"), iY = idx("latitude"), iI = idx("passenger_id");
+    data.positions.rows.forEach(function (r) {
+      if (r[iF] !== floor) return;
+      var me = following && r[iI] === following;
+      L.circleMarker([r[iY], r[iX]], { renderer: paxRenderer, pane: "pax", interactive: false, radius: me ? 7 : 2.6, weight: me ? 3 : 0, color: "#18202b",
+        fillColor: ACT[r[iA]] || "#868e96", fillOpacity: 0.9 }).addTo(paxLayer);
     });
-    if (!layoutBounds && all.length) {
-      layoutBounds = all.reduce(function (a, b) { return a.extend(b); }, L.latLngBounds(all[0].getSouthWest(), all[0].getNorthEast()));
-      map.fitBounds(layoutBounds, { padding: [30, 30] }); fitted = true;
+  }
+
+  // Clicking the map follows the nearest passenger on this floor (dots are too small to hit exactly).
+  map.on("click", function (e) {
+    if (!data || !show.pax) return;
+    var iF = idx("floor"), iX = idx("longitude"), iY = idx("latitude"), iI = idx("passenger_id"), best = null, bestD = 15;
+    var click = map.latLngToContainerPoint(e.latlng);
+    data.positions.rows.forEach(function (r) {
+      if (r[iF] !== floor) return;
+      var d = map.latLngToContainerPoint([r[iY], r[iX]]).distanceTo(click);
+      if (d < bestD) { bestD = d; best = r[iI]; }
+    });
+    if (best) follow(best);
+  });
+
+  function renderHeat() {
+    heatLayer.clearLayers();
+    if (!show.heat) return;
+    var iF = idx("floor"), iX = idx("longitude"), iY = idx("latitude");
+    var cell = map.getZoom() >= 18 ? 5 : 10, scale = cell === 5 ? 1 : 4; // people per cell scale with cell area
+    var dLat = cell / 110574, dLon = cell / (111320 * Math.cos(17.2355 * Math.PI / 180)), bins = {};
+    data.positions.rows.forEach(function (r) {
+      if (r[iF] !== floor) return;
+      var key = Math.floor(r[iY] / dLat) + ":" + Math.floor(r[iX] / dLon);
+      bins[key] = (bins[key] || 0) + 1;
+    });
+    Object.keys(bins).forEach(function (key) {
+      var n = bins[key], v = n / scale, ij = key.split(":").map(Number), c = v >= 8 ? RAMP[4] : v >= 5 ? RAMP[3] : v >= 3 ? RAMP[2] : v >= 1.5 ? RAMP[1] : RAMP[0];
+      L.rectangle([[ij[0] * dLat, ij[1] * dLon], [(ij[0] + 1) * dLat, (ij[1] + 1) * dLon]], { renderer: heatRenderer, pane: "heat", stroke: false, fillColor: c, fillOpacity: 0.8 })
+        .bindTooltip(n + " people in this " + cell + " m square").addTo(heatLayer);
+    });
+  }
+
+  function renderLegend() {
+    var counts = {}, iF = idx("floor"), iA = idx("activity"), here = 0;
+    data.positions.rows.forEach(function (r) { if (r[iF] === floor) { here++; counts[r[iA]] = (counts[r[iA]] || 0) + 1; } });
+    var acts = ["walking", "queuing", "in_service", "dwelling", "at_gate", "reclaim"];
+    $("legend").innerHTML = "<b>" + (floor === "L1" ? "Departures level (L1)" : floor === "L0" ? "Arrivals level (L0)" : esc(floor)) + ": " + here.toLocaleString() + " passengers</b>" +
+      '<div class="row">' + acts.map(function (a) { return '<span><i style="background:' + ACT[a] + '"></i>' + ACT_LABEL[a] + " " + (counts[a] || 0) + "</span>"; }).join("") + "</div>" +
+      '<div class="row">Checkpoints: <span><i style="background:' + STATUS.normal + '"></i>On target</span><span><i style="background:' + STATUS.busy + '"></i>Busy</span><span><i style="background:' + STATUS.congested + '"></i>Over target</span></div>' +
+      '<div class="row"><span>Density</span><span class="ramp"></span><span>' + DENSE + "+ per 100 m&sup2;</span></div>" +
+      '<div class="hint">Outline: OpenStreetMap. Interior: schematic. Circle size = queue length.</div>';
+  }
+
+  // ---- follow a passenger ----
+  function follow(id) { following = id; followData = null; selectTab("passenger"); fetchTrack(); render(); }
+  function fetchTrack() {
+    if (!following) return;
+    fetch("api/track?id=" + encodeURIComponent(following), { cache: "no-store" }).then(function (r) { return r.json(); })
+      .then(function (d) { followData = d; renderFollow(); }).catch(function () {});
+  }
+  function renderFollow() {
+    trailLayer.clearLayers();
+    var box = $("paxBox");
+    if (!following) { box.innerHTML = FOLLOW_HINT; return; }
+    if (!followData) { box.innerHTML = '<div class="hint">Loading ' + esc(following) + "...</div>"; return; }
+    var pts = followData.points || [], seg = [], segFloor = null;
+    function flush() { if (seg.length > 1) L.polyline(seg, { pane: "trail", color: segFloor === floor ? "#18202b" : "#98a2b3", weight: segFloor === floor ? 3 : 2, dashArray: segFloor === floor ? null : "4 6", opacity: 0.85 }).addTo(trailLayer); }
+    pts.forEach(function (p) { if (p[3] !== segFloor) { flush(); seg = seg.length ? [seg[seg.length - 1]] : []; segFloor = p[3]; } seg.push([p[2], p[1]]); });
+    flush();
+    var cur = followData.current, f = followData.fields, get = function (k) { return cur ? cur[f.indexOf(k)] : null; };
+    var tl = followData.timeline || [];
+    var html = "<h3>" + esc(following) + "</h3>";
+    html += '<dl class="kv"><dt>Journey</dt><dd>' + esc((get("journey") || "-").replace(/_/g, " ")) + "</dd><dt>Flight</dt><dd>" + esc(get("flight_id") || "-") +
+      "</dd><dt>Gate</dt><dd>" + esc(nice(get("gate_id"))) + "</dd><dt>Now</dt><dd>" + (cur ? esc(ACT_LABEL[get("activity")] || get("activity")) + " &middot; " + esc(nice(get("indoor_zone_id"))) + " &middot; " + esc(get("floor")) : (followData.ended ? "Boarded or left the terminal" : "Not seen yet")) +
+      "</dd><dt>Tracked for</dt><dd>" + (tl.length && pts.length ? Math.round((pts[pts.length - 1][0] - tl[0][0]) / 60000) + " min (since the dashboard started)" : "-") + "</dd></dl>";
+    html += '<div style="margin-top:8px;display:flex;gap:6px"><button class="btn" id="zoomPax">Zoom to</button><button class="btn" id="stopPax">Stop following</button></div>';
+    html += '<h3 style="margin-top:12px">Journey so far</h3><ul class="timeline">' + tl.map(function (t) {
+      return '<li><span class="t">' + hhmm(t[0]).slice(0, 5) + '</span><i style="background:' + (ACT[t[1]] || "#868e96") + '"></i><span>' + esc(ACT_LABEL[t[1]] || t[1]) + (t[2] ? " - " + esc(nice(t[2])) : t[3] ? " - " + esc(nice(t[3])) : "") + "</span></li>";
+    }).join("") + "</ul>";
+    box.innerHTML = html;
+    $("stopPax").onclick = function () { following = null; followData = null; render(); };
+    $("zoomPax").onclick = function () { if (!cur) return; setFloor(get("floor")); map.flyTo([get("latitude"), get("longitude")], 19, { duration: 0.6 }); };
+  }
+
+  // ---- data loop and replay ----
+  var slider = $("slider"), snaps = [];
+  $("liveBtn").onclick = function () { live = true; $("liveBtn").setAttribute("aria-pressed", "true"); poll(); };
+  slider.oninput = function () {
+    live = false; $("liveBtn").setAttribute("aria-pressed", "false");
+    var t = snaps[+slider.value]; $("replayLbl").textContent = "Replaying " + hhmm(t).slice(0, 5);
+    fetch("api/snapshot?t=" + t, { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) { if (d) { data = d; render(); } });
+  };
+  function updateSlider() {
+    snaps = data.snapshots || [];
+    slider.disabled = snaps.length < 2; slider.max = Math.max(0, snaps.length - 1);
+    if (live) {
+      slider.value = slider.max;
+      $("replayLbl").textContent = snaps.length > 1 ? "Drag to replay " + hhmm(snaps[0]).slice(0, 5) + " - " + hhmm(snaps[snaps.length - 1]).slice(0, 5) : "Replay builds up as minutes arrive";
     }
   }
-
-  function floorChips() {
-    var box = document.getElementById("floors"), opts = [["all", "All floors"]];
-    if (layoutData && layoutData.floors) Object.keys(layoutData.floors).sort().reverse().forEach(function (k) { opts.push([k, k + " " + layoutData.floors[k].name]); });
-    box.innerHTML = "";
-    opts.forEach(function (o) {
-      var b = document.createElement("button"); b.className = "chip"; b.textContent = o[1];
-      b.setAttribute("aria-pressed", String(floor === o[0]));
-      b.onclick = function () { floor = o[0]; floorChips(); drawLayout(); redraw(); drawPax(); };
-      box.appendChild(b);
-    });
+  function poll() {
+    if (!live) return;
+    fetch("api/state", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (d) { data = d; updateSlider(); render(); if (following) fetchTrack(); })
+      .catch(function () { $("dot").className = "dot err"; $("statusText").textContent = "Dashboard server not reachable"; });
   }
 
-  function paxPopup(r) {
-    var p = {}; paxFields.forEach(function (k, i) { p[k] = r[i]; });
-    var rows = [["Journey", pretty(p.journey || "-")], ["Activity", ACT_LABEL[p.activity] || p.activity], ["Touchpoint", p.touchpoint_id ? nice(p.touchpoint_id) : "-"],
-      ["Flight", p.flight_id || "-"], ["Gate", p.gate_id ? nice(p.gate_id) : "-"], ["Zone", p.indoor_zone_id ? nice(p.indoor_zone_id) : "-"], ["Floor", p.floor]];
-    return '<div class="pop"><h3>' + esc(p.passenger_id) + '</h3><div class="meta">' + esc(p.latitude) + ", " + esc(p.longitude) + "</div><dl>" +
-      rows.map(function (x) { return "<dt>" + esc(x[0]) + "</dt><dd>" + esc(x[1]) + "</dd>"; }).join("") + "</dl></div>";
-  }
-
-  function drawPax() {
-    paxLayer.clearLayers();
-    var counts = {}, shown = 0, iF = paxFields.indexOf("floor"), iA = paxFields.indexOf("activity"),
-        iX = paxFields.indexOf("longitude"), iY = paxFields.indexOf("latitude");
-    paxRows.forEach(function (r) {
-      if (floor !== "all" && r[iF] !== floor) return;
-      counts[r[iA]] = (counts[r[iA]] || 0) + 1; shown++;
-      L.circleMarker([r[iY], r[iX]], { renderer: paxRenderer, pane: "pax", radius: 2.6, weight: 0, fillColor: ACT[r[iA]] || "#868e96", fillOpacity: 0.85 })
-        .on("click", function (e) { L.popup({ maxWidth: 260 }).setLatLng(e.latlng).setContent(paxPopup(r)).openOn(map); })
-        .addTo(paxLayer);
-    });
-    document.getElementById("sPax").textContent = shown.toLocaleString();
-    document.getElementById("paxLegend").innerHTML = Object.keys(ACT).map(function (k) {
-      return '<div><i style="background:' + ACT[k] + ';width:9px;height:9px"></i>' + ACT_LABEL[k] + ' <span class="sub">' + (counts[k] || 0) + "</span></div>";
-    }).join("");
-  }
-
-  function paxTick() {
-    fetch("api/positions", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (d) {
-      paxFields = d.fields; paxRows = d.rows; drawPax();
-      document.getElementById("paxCounts").textContent = d.event_time_epoch_ms ? "(" + new Date(d.event_time_epoch_ms).toISOString().slice(11, 19) + " UTC)" : "(waiting for the tracking feed)";
-    }).catch(function () {});
-  }
-
-  fetch("api/layout").then(function (r) { return r.ok ? r.json() : null; }).then(function (d) { layoutData = d; floorChips(); drawLayout(); }).catch(function () { floorChips(); });
-  tick(); setInterval(tick, 2000);
-  paxTick(); setInterval(paxTick, 2000);
+  renderFollow();
+  map.on("zoomend", function () { if (data && show.heat) renderHeat(); });
+  fetch("api/layout").then(function (r) { return r.ok ? r.json() : null; }).then(function (d) { layout = d; buttons(); drawLayout(); render(); }).catch(function () { buttons(); });
+  poll(); setInterval(poll, 2000);
 })();
 </script>
 </body>

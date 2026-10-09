@@ -5,12 +5,13 @@
 #   scripts/local_poc.sh kafka-down   stop it (add -v to also delete its data)
 #   scripts/local_poc.sh kafka-ui     browse topics and messages at http://127.0.0.1:8081
 #   scripts/local_poc.sh test         unit tests + real-broker round trip
-#   scripts/local_poc.sh demo         kafka + queue feed + passenger tracking + map viewer
-#   scripts/local_poc.sh stream ...   just the publisher (extra args go to `airport-eye stream`)
+#   scripts/local_poc.sh demo         kafka + terminal simulation (all four feeds) + dashboard
+#   scripts/local_poc.sh map ...      dashboard with the simulation built in, no Kafka or Docker (--speed N)
+#   scripts/local_poc.sh stream ...   older standalone queue feed (not linked to passengers)
 #   scripts/local_poc.sh files ...    queue data as CSV/GeoJSON/JSON files, no Kafka (add --live for every minute)
-#   scripts/local_poc.sh pax ...      live passenger tracking to Kafka (positions every 5 s)
-#   scripts/local_poc.sh pax-files .. passenger tracking to CSV/JSONL files, no Kafka (add --live for latest files)
-#   scripts/local_poc.sh viewer ...   just the map viewer
+#   scripts/local_poc.sh pax ...      terminal simulation to Kafka only (no dashboard)
+#   scripts/local_poc.sh pax-files .. all four feeds to CSV/GeoJSON files, no Kafka (add --live for latest files)
+#   scripts/local_poc.sh viewer ...   just the dashboard, reading Kafka
 set -euo pipefail
 cd "$(dirname "$0")/.."
 BOOTSTRAP="${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
@@ -91,17 +92,21 @@ case "${1:-help}" in
     mkdir -p .poc
     "$VENV/bin/python" scripts/map_viewer.py --bootstrap "$BOOTSTRAP" > .poc/viewer.log 2>&1 &
     VIEWER_PID=$!
-    # Passenger tracking runs alongside, in real time unless PAX_SPEED is set (log: .poc/pax.log).
-    PYTHONUNBUFFERED=1 "$VENV/bin/airport-eye" pax-stream --bootstrap "$BOOTSTRAP" --speed "${PAX_SPEED:-1}" > .poc/pax.log 2>&1 &
-    PAX_PID=$!
-    trap 'kill "$VIEWER_PID" "$PAX_PID" 2>/dev/null || true' EXIT INT TERM
+    trap 'kill "$VIEWER_PID" 2>/dev/null || true' EXIT INT TERM
     sleep 2
-    echo "Map: http://127.0.0.1:8080"
+    echo "Dashboard: http://127.0.0.1:8080"
     (command -v open >/dev/null 2>&1 && open "http://127.0.0.1:8080") || (command -v xdg-open >/dev/null 2>&1 && xdg-open "http://127.0.0.1:8080") || true
-    echo "Publishing one batch per minute. Add '--speed 60' for a quick look (one batch per second). Ctrl-C to stop."
-    "$VENV/bin/airport-eye" stream --bootstrap "$BOOTSTRAP" "$@"
+    echo "One simulation publishes all four feeds: positions every 5 s; queues, zones and journeys every minute."
+    echo "Add '--speed 12' to run 12x faster. Ctrl-C to stop."
+    "$VENV/bin/airport-eye" pax-stream --bootstrap "$BOOTSTRAP" "$@"
+    ;;
+  map)
+    need_venv; shift
+    echo "Dashboard: http://127.0.0.1:8080 (simulation runs inside the dashboard, no Kafka). Ctrl-C to stop."
+    (sleep 2; (command -v open >/dev/null 2>&1 && open "http://127.0.0.1:8080") || true) &
+    "$VENV/bin/python" scripts/map_viewer.py --simulate "$@"
     ;;
   *)
-    sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
     ;;
 esac

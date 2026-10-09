@@ -3,6 +3,11 @@
 This document describes what the AirportEye POC publishes to Kafka for the Esri and GeoKno teams, how to run it on a
 laptop, and what the Esri side needs to configure. All data is **synthetic**.
 
+> **Two ways to produce this feed.** `scripts/local_poc.sh demo` / `pax` measure it from the simulated
+> passengers in `docs/PASSENGER_TRACKING.md` (recommended: it agrees with the position, zone and journey
+> feeds, and `service_channels` is the number of lanes **open**). `scripts/local_poc.sh stream` / `files`
+> run the older standalone queue simulation described below. The record format is the same.
+
 ## 1. What is sent
 
 | | |

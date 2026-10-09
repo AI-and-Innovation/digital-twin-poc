@@ -1,13 +1,13 @@
-"""Local live map of the Esri feeds, for checking the POC without any Esri software.
+"""Local operations dashboard for the AirportEye feeds - no Esri software needed.
 
 Reads the flat Esri-format records (the same ones ArcGIS Velocity / GeoEvent
-Server would ingest) from Kafka: touchpoint queues are plotted at their
-longitude/latitude and coloured by queue health; passenger positions are drawn
-as dots coloured by activity. The terminal outline and zones come from
-config/terminal_layout.json.
+Server would ingest) and shows what an operations team would look at: terminal
+KPIs, checkpoint queues against their targets, zone occupancy, a passenger
+heatmap and individual tracks, per floor, with a replay of the last 90 minutes.
 
-  python scripts/map_viewer.py --bootstrap localhost:9092          # live from Kafka
-  python scripts/map_viewer.py --file generated_data/passenger_touchpoint.jsonl   # queues only, no broker
+  python scripts/map_viewer.py --bootstrap localhost:9092     # live from Kafka (all four topics)
+  python scripts/map_viewer.py --simulate                     # run the simulation in-process, no Kafka
+  python scripts/map_viewer.py --file generated_data/passenger_touchpoint.jsonl   # queue replay only
 
 Then open http://127.0.0.1:8080
 """
@@ -22,83 +22,216 @@ import time
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 HERE = Path(__file__).resolve().parent
 VIEWER = HERE / "viewer"
-HISTORY = 60
+PREFIX = "airport-eye.poc.esri."
+FEEDS = ("passenger.touchpoint", "passenger.position", "passenger.aggregate", "passenger.journey_kpi")
+POSITION_FIELDS = ("longitude", "latitude", "floor", "activity", "journey", "flight_id", "gate_id",
+                   "indoor_zone_id", "touchpoint_id")
+TP_FIELDS = ("entity_id", "touchpoint_name", "touchpoint_type", "flow", "floor", "longitude", "latitude",
+             "queue_length", "queue_limit", "passengers_in_service", "service_channels", "utilization_pct",
+             "processed_passengers", "throughput_per_hour", "throughput_since_midnight", "estimated_wait_seconds",
+             "avg_wait_time_seconds", "avg_processing_time_seconds", "p95_wait_seconds", "target_wait_seconds",
+             "aera_existing_wait_seconds", "aera_proposed_wait_seconds", "status", "sla_breached", "zone_id",
+             "event_time", "event_time_epoch_ms")
+SNAPSHOT_MINUTES = 90
+TRACK_POINTS = 360
 
 
-class State:
-    """Latest record per entity, a short queue history, and feed statistics."""
-
-    def __init__(self) -> None:
-        self.lock = threading.Lock()
-        self.latest: dict[str, dict] = {}
-        self.history: dict[str, deque] = {}
-        self.received = 0
-        self.last_received_at: float | None = None
-        self.source = ""
-        self.error: str | None = None
-
-    def add(self, record: dict) -> None:
-        entity = record.get("entity_id")
-        if not entity:
-            return
-        with self.lock:
-            self.latest[entity] = record  # last record received wins (one partition per key keeps order)
-            hist = self.history.setdefault(entity, deque(maxlen=HISTORY))
-            hist.append([record.get("event_time_epoch_ms"), record.get("queue_length")])
-            self.received += 1
-            self.last_received_at = time.time()
-
-    def snapshot(self) -> dict:
-        with self.lock:
-            features = []
-            for entity, rec in self.latest.items():
-                if rec.get("longitude") is None or rec.get("latitude") is None:
-                    continue
-                features.append({"type": "Feature",
-                                 "geometry": {"type": "Point", "coordinates": [rec["longitude"], rec["latitude"]]},
-                                 "properties": {**rec, "history": list(self.history.get(entity, []))}})
-            age = None if self.last_received_at is None else round(time.time() - self.last_received_at, 1)
-            return {"type": "FeatureCollection", "features": features,
-                    "stats": {"received": self.received, "entities": len(self.latest), "source": self.source,
-                              "seconds_since_last": age, "error": self.error}}
-
-
-class PositionState:
-    """Latest position per passenger. Tracks end on 'boarded'/'exited' or when they stop reporting."""
-
-    FIELDS = ("longitude", "latitude", "floor", "activity", "journey", "flight_id", "gate_id",
-              "indoor_zone_id", "touchpoint_id")
+class TwinState:
+    """Latest view of all four feeds, short histories, per-minute snapshots and passenger tracks."""
 
     def __init__(self, stale_ms: int = 20_000) -> None:
         self.lock = threading.Lock()
-        self.latest: dict[str, tuple[int, list]] = {}
+        self.touchpoints: dict[str, dict] = {}
+        self.tp_history: dict[str, deque] = {}
+        self.zones: dict[str, dict] = {}
+        self.kpi: dict | None = None
+        self.kpi_history: deque = deque(maxlen=SNAPSHOT_MINUTES)
+        self.positions: dict[str, tuple[int, list]] = {}
+        self.tracks: dict[str, deque] = {}
+        self.timelines: dict[str, list] = {}
+        self.ended: dict[str, int] = {}
+        self.snapshots: deque = deque(maxlen=SNAPSHOT_MINUTES)
         self.newest_ms = 0
-        self.received = 0
+        self.received = {feed: 0 for feed in FEEDS}
+        self.last_received_at: float | None = None
+        self.source = ""
+        self.error: str | None = None
         self.stale_ms = stale_ms
 
+    # -- ingest ----------------------------------------------------------------
     def add(self, record: dict) -> None:
-        pax, when = record.get("entity_id"), record.get("event_time_epoch_ms") or 0
+        kind = record.get("event_type")
+        with self.lock:
+            if kind in self.received:
+                self.received[kind] += 1
+            self.last_received_at = time.time()
+            when = record.get("event_time_epoch_ms") or 0
+            self.newest_ms = max(self.newest_ms, when)
+            if kind == "passenger.position":
+                self._add_position(record, when)
+            elif kind == "passenger.touchpoint":
+                tp = record.get("entity_id")
+                self.touchpoints[tp] = {k: record.get(k) for k in TP_FIELDS}
+                self.tp_history.setdefault(tp, deque(maxlen=60)).append(
+                    [when, record.get("queue_length"), record.get("estimated_wait_seconds")])
+            elif kind == "passenger.aggregate":
+                self.zones[record.get("zone_id")] = {k: v for k, v in record.items() if k != "cells"}
+            elif kind == "passenger.journey_kpi":
+                self.kpi = record
+                self.kpi_history.append([when, record.get("people_in_terminal"), record.get("people_queuing"),
+                                         record.get("kerb_to_airside_p50_minutes"),
+                                         record.get("arrival_to_exit_p50_minutes")])
+                self._snapshot(when)
+
+    def _add_position(self, record: dict, when: int) -> None:
+        pax = record.get("entity_id")
         if not pax or record.get("longitude") is None:
             return
-        with self.lock:
-            self.received += 1
-            self.newest_ms = max(self.newest_ms, when)
-            if record.get("activity") in ("boarded", "exited"):
-                self.latest.pop(pax, None)
-            else:
-                self.latest[pax] = (when, [record.get(f) for f in self.FIELDS])
+        values = [record.get(f) for f in POSITION_FIELDS]
+        track = self.tracks.setdefault(pax, deque(maxlen=TRACK_POINTS))
+        track.append([when, values[0], values[1], values[2], values[3]])
+        timeline = self.timelines.setdefault(pax, [])
+        step = [when, record.get("activity"), record.get("touchpoint_id"), record.get("indoor_zone_id")]
+        if not timeline or timeline[-1][1:3] != step[1:3]:
+            timeline.append(step)
+            del timeline[:-60]
+        if record.get("activity") in ("boarded", "exited"):
+            self.positions.pop(pax, None)
+            self.ended[pax] = when
+        else:
+            self.positions[pax] = (when, values)
 
-    def snapshot(self) -> dict:
+    def _prune(self) -> None:
+        cutoff = self.newest_ms - self.stale_ms
+        for pax in [p for p, (when, _) in self.positions.items() if when < cutoff]:
+            del self.positions[pax]
+            self.ended[pax] = self.newest_ms
+        forget = self.newest_ms - 10 * 60_000  # keep ended tracks for 10 minutes
+        for pax in [p for p, when in self.ended.items() if when < forget]:
+            self.ended.pop(pax, None)
+            self.tracks.pop(pax, None)
+            self.timelines.pop(pax, None)
+
+    def _positions_payload(self) -> dict:
+        return {"fields": ["passenger_id", *POSITION_FIELDS],
+                "rows": [[pax] + values for pax, (_, values) in self.positions.items()]}
+
+    def _snapshot(self, when: int) -> None:
+        self._prune()
+        self.snapshots.append({"t": when, "kpi": self.kpi, "touchpoints": list(self.touchpoints.values()),
+                               "zones": list(self.zones.values()),
+                               "positions": json.dumps(self._positions_payload(), separators=(",", ":"))})
+
+    # -- views -----------------------------------------------------------------
+    def state(self) -> dict:
         with self.lock:
-            cutoff = self.newest_ms - self.stale_ms
-            for pax in [p for p, (when, _) in self.latest.items() if when < cutoff]:
-                del self.latest[pax]
-            rows = [[pax] + values for pax, (_, values) in self.latest.items()]
-            return {"fields": ["passenger_id", *self.FIELDS], "rows": rows, "received": self.received,
-                    "event_time_epoch_ms": self.newest_ms or None}
+            self._prune()
+            age = None if self.last_received_at is None else round(time.time() - self.last_received_at, 1)
+            touchpoints = [dict(tp, history=list(self.tp_history.get(tp["entity_id"], [])))
+                           for tp in self.touchpoints.values()]
+            return {"mode": "live", "t": self.newest_ms or None, "kpi": self.kpi,
+                    "kpi_history": list(self.kpi_history), "touchpoints": touchpoints,
+                    "zones": list(self.zones.values()), "positions": self._positions_payload(),
+                    "snapshots": [s["t"] for s in self.snapshots],
+                    "stats": {"received": self.received, "source": self.source, "seconds_since_last": age,
+                              "error": self.error}}
+
+    def snapshot(self, t: int) -> dict | None:
+        with self.lock:
+            if not self.snapshots:
+                return None
+            snap = min(self.snapshots, key=lambda s: abs(s["t"] - t))
+            kpi_history = [k for k in self.kpi_history if k[0] <= snap["t"]]
+            touchpoints = [dict(tp, history=[h for h in self.tp_history.get(tp["entity_id"], []) if h[0] <= snap["t"]])
+                           for tp in snap["touchpoints"]]
+            return {"mode": "replay", "t": snap["t"], "kpi": snap["kpi"], "kpi_history": kpi_history,
+                    "touchpoints": touchpoints, "zones": snap["zones"], "positions": json.loads(snap["positions"]),
+                    "snapshots": [s["t"] for s in self.snapshots],
+                    "stats": {"received": self.received, "source": self.source, "seconds_since_last": None,
+                              "error": self.error}}
+
+    def track(self, pax: str) -> dict:
+        with self.lock:
+            latest = self.positions.get(pax)
+            return {"passenger_id": pax, "fields": ["passenger_id", *POSITION_FIELDS],
+                    "current": [pax] + latest[1] if latest else None, "ended": pax in self.ended,
+                    "points": list(self.tracks.get(pax, [])), "timeline": list(self.timelines.get(pax, []))}
+
+
+# -- sources -------------------------------------------------------------------
+def consume_kafka(state: TwinState, bootstrap: str, topics: list[str], from_beginning: bool, group: str) -> None:
+    from confluent_kafka import Consumer
+
+    state.source = f"kafka {bootstrap}"
+    consumer = Consumer({"bootstrap.servers": bootstrap, "group.id": group,
+                         "auto.offset.reset": "earliest" if from_beginning else "latest",
+                         "enable.auto.commit": False, "allow.auto.create.topics": True,
+                         # the publisher may create the topics after the viewer starts
+                         "topic.metadata.refresh.interval.ms": 5000})
+    consumer.subscribe(topics)
+    while True:
+        for msg in consumer.consume(num_messages=5000, timeout=1.0):
+            if msg.error():
+                state.error = str(msg.error())
+                continue
+            state.error = None
+            try:
+                state.add(json.loads(msg.value()))
+            except ValueError:
+                state.error = "skipped a message that is not JSON"
+
+
+class _StatePublisher:
+    """Lets the simulation publish straight into the dashboard (``--simulate``)."""
+
+    def __init__(self, state: TwinState, locator) -> None:
+        from airport_eye.esri import to_esri_record
+
+        self.state, self.locator, self.to_record = state, locator, to_esri_record
+        self.count = 0
+
+    def publish(self, event) -> None:
+        self.state.add(self.to_record(event, self.locator))
+        self.count += 1
+
+    def flush(self, timeout: float = 0.0) -> None:
+        pass
+
+    def stats(self) -> dict[str, int]:
+        return {"queued": self.count, "delivered": self.count, "failed": 0}
+
+
+def simulate(state: TwinState, tracking_config: str, zones: str, speed: float) -> None:
+    from airport_eye.esri import ZoneLocator
+    from airport_eye.tracking import run_tracking_stream
+
+    state.source = f"in-process simulation (speed x{speed:g})"
+    run_tracking_stream(tracking_config, _StatePublisher(state, ZoneLocator.from_file(zones)), speed=speed,
+                        create_topics=False, log=lambda _m: None)
+
+
+def replay_file(state: TwinState, path: str, zones: str, seconds_per_batch: float) -> None:
+    """Feed the dashboard from a generated touchpoint JSONL file, one minute per batch, looping."""
+    from airport_eye.esri import ZoneLocator, to_esri_record
+    from airport_eye.models import EventEnvelope
+
+    locator = ZoneLocator.from_file(zones)
+    batches: dict[str, list[dict]] = {}
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            if line.strip():
+                record = to_esri_record(EventEnvelope.model_validate_json(line), locator)
+                batches.setdefault(record["event_time"], []).append(record)
+    state.source = f"file {Path(path).name} (queue replay, looping)"
+    while batches:
+        for key in sorted(batches):
+            for record in batches[key]:
+                state.add(record)
+            time.sleep(seconds_per_batch)
 
 
 def layout_geojson(path: str) -> dict:
@@ -123,70 +256,7 @@ def layout_geojson(path: str) -> dict:
             "note": layout.get("_note", "")}
 
 
-def consume_positions(state: PositionState, bootstrap: str, topic: str, group: str) -> None:
-    from confluent_kafka import Consumer
-
-    consumer = Consumer({"bootstrap.servers": bootstrap, "group.id": group, "auto.offset.reset": "latest",
-                         "enable.auto.commit": False, "allow.auto.create.topics": True,
-                         "topic.metadata.refresh.interval.ms": 5000})
-    consumer.subscribe([topic])
-    while True:
-        for msg in consumer.consume(num_messages=5000, timeout=1.0):
-            if msg.error():
-                continue
-            try:
-                state.add(json.loads(msg.value()))
-            except ValueError:
-                pass
-
-
-def consume_kafka(state: State, bootstrap: str, topic: str, from_beginning: bool, group: str) -> None:
-    from confluent_kafka import Consumer
-
-    state.source = f"kafka {bootstrap} / {topic}"
-    consumer = Consumer({"bootstrap.servers": bootstrap, "group.id": group,
-                         "auto.offset.reset": "earliest" if from_beginning else "latest",
-                         "enable.auto.commit": False, "allow.auto.create.topics": True,
-                         # the publisher may create the topic after the viewer starts
-                         "topic.metadata.refresh.interval.ms": 5000})
-    consumer.subscribe([topic])
-    while True:
-        msg = consumer.poll(1.0)
-        if msg is None:
-            continue
-        if msg.error():
-            state.error = str(msg.error())
-            continue
-        state.error = None
-        try:
-            state.add(json.loads(msg.value()))
-        except ValueError:
-            state.error = "skipped a message that is not JSON"
-
-
-def replay_file(state: State, path: str, zones: str, config: str, seconds_per_batch: float) -> None:
-    """Feed the viewer from a generated JSONL file, one simulated minute per batch, looping."""
-    from airport_eye.esri import ZoneLocator, to_esri_record
-    from airport_eye.models import EventEnvelope
-
-    locator = ZoneLocator.from_file(zones)
-    batches: dict[str, list[dict]] = {}
-    with open(path, encoding="utf-8") as handle:
-        for line in handle:
-            if line.strip():
-                record = to_esri_record(EventEnvelope.model_validate_json(line), locator)
-                batches.setdefault(record["event_time"], []).append(record)
-    state.source = f"file {Path(path).name} (replay, looping)"
-    while batches:
-        for key in sorted(batches):
-            for record in batches[key]:
-                state.add(record)
-            time.sleep(seconds_per_batch)
-        state.latest.clear()
-        state.history.clear()
-
-
-def make_handler(state: State, positions: PositionState, layout: dict | None):
+def make_handler(state: TwinState, layout: dict | None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_args):  # keep the console quiet
             pass
@@ -199,16 +269,22 @@ def make_handler(state: State, positions: PositionState, layout: dict | None):
             self.end_headers()
             self.wfile.write(body)
 
+        def _json(self, data, status: int = 200) -> None:
+            self._send(status, json.dumps(data, separators=(",", ":")).encode(), "application/json")
+
         def do_GET(self):  # noqa: N802
-            path = self.path.split("?")[0]
-            if path == "/api/state":
-                return self._send(200, json.dumps(state.snapshot()).encode(), "application/json")
-            if path == "/api/positions":
-                return self._send(200, json.dumps(positions.snapshot(), separators=(",", ":")).encode(),
-                                  "application/json")
-            if path == "/api/layout":
-                return self._send(200 if layout else 404, json.dumps(layout or {}).encode(), "application/json")
-            rel = "index.html" if path in ("/", "") else path.lstrip("/")
+            url = urlparse(self.path)
+            query = parse_qs(url.query)
+            if url.path == "/api/state":
+                return self._json(state.state())
+            if url.path == "/api/snapshot":
+                snap = state.snapshot(int(query.get("t", ["0"])[0]))
+                return self._json(snap or {}, 200 if snap else 404)
+            if url.path == "/api/track":
+                return self._json(state.track(query.get("id", [""])[0]))
+            if url.path == "/api/layout":
+                return self._json(layout or {}, 200 if layout else 404)
+            rel = "index.html" if url.path in ("/", "") else url.path.lstrip("/")
             target = (VIEWER / rel).resolve()
             if VIEWER.resolve() not in target.parents or not target.is_file():
                 return self._send(404, b"not found", "text/plain")
@@ -221,34 +297,35 @@ def make_handler(state: State, positions: PositionState, layout: dict | None):
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--bootstrap", default="localhost:9092")
-    ap.add_argument("--topic", default="airport-eye.poc.esri.passenger.touchpoint")
-    ap.add_argument("--positions-topic", default="airport-eye.poc.esri.passenger.position",
-                    help="passenger tracking topic (read from the newest message; empty string to skip)")
-    ap.add_argument("--latest-only", action="store_true",
-                    help="ignore records published before the viewer started (default: read the topic from the start, newest per touchpoint wins)")
-    ap.add_argument("--file", help="replay a generated JSONL file instead of reading Kafka")
+    ap.add_argument("--topic-prefix", default=PREFIX, help="topics are <prefix><event_type>")
+    ap.add_argument("--from-beginning", action="store_true", help="read the topics from the start (default: newest only)")
+    ap.add_argument("--simulate", action="store_true", help="run the terminal simulation in-process instead of reading Kafka")
+    ap.add_argument("--speed", type=float, default=1.0, help="--simulate only: time compression")
+    ap.add_argument("--tracking-config", default="config/passenger_tracking.json")
+    ap.add_argument("--file", help="replay a generated touchpoint JSONL file instead of reading Kafka")
     ap.add_argument("--zones", default="config/terminal_layout.json")
     ap.add_argument("--replay-seconds", type=float, default=1.0, help="seconds per simulated minute in --file mode")
     ap.add_argument("--port", type=int, default=8080)
     ap.add_argument("--host", default="127.0.0.1")
     args = ap.parse_args()
 
-    state, positions = State(), PositionState()
+    state = TwinState()
     try:
         layout = layout_geojson(args.zones)
     except (OSError, KeyError, ValueError):
         layout = None  # older flat zone file: no outlines to draw
-    if args.file:
-        worker = threading.Thread(target=replay_file, args=(state, args.file, args.zones, "", args.replay_seconds), daemon=True)
+    if args.simulate:
+        worker = threading.Thread(target=simulate, args=(state, args.tracking_config, args.zones, args.speed), daemon=True)
+    elif args.file:
+        worker = threading.Thread(target=replay_file, args=(state, args.file, args.zones, args.replay_seconds), daemon=True)
     else:
+        topics = [args.topic_prefix + feed for feed in FEEDS]
         group = f"map-viewer-{int(time.time())}"
-        worker = threading.Thread(target=consume_kafka, args=(state, args.bootstrap, args.topic, not args.latest_only, group), daemon=True)
-        if args.positions_topic:
-            threading.Thread(target=consume_positions, args=(positions, args.bootstrap, args.positions_topic, group + "-pax"),
-                             daemon=True).start()
+        worker = threading.Thread(target=consume_kafka, args=(state, args.bootstrap, topics, args.from_beginning, group),
+                                  daemon=True)
     worker.start()
-    server = ThreadingHTTPServer((args.host, args.port), make_handler(state, positions, layout))
-    print(f"Map viewer: http://{args.host}:{args.port}   (Ctrl-C to stop)")
+    server = ThreadingHTTPServer((args.host, args.port), make_handler(state, layout))
+    print(f"Dashboard: http://{args.host}:{args.port}   (Ctrl-C to stop)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

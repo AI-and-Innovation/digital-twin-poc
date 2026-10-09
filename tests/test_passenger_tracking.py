@@ -11,7 +11,7 @@ from airport_eye.esri import ZoneLocator, to_esri_record
 from airport_eye.generators.passenger import generate_ticks, load_tracking
 from airport_eye.models import EventEnvelope
 from airport_eye.spatial import LocalFrame, WalkGraph, point_in_polygon
-from airport_eye.tracking import PositionFileWriter, write_tracking_range
+from airport_eye.tracking import TwinFileWriter, write_tracking_range
 from airport_eye.streaming import publish_paced
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,8 +21,12 @@ START = datetime(2026, 10, 9, 2, 30, tzinfo=timezone.utc)
 
 def short_run(minutes=6, warmup=90):
     config, layout, inventory, _ = load_tracking(TRACKING)
-    config = config.model_copy(update={"warmup_minutes": warmup})
+    config = config.model_copy(update={"warmup_minutes": warmup, "warmup_from_local_midnight": False})
     return config, layout, inventory, list(generate_ticks(config, layout, inventory, START, START + timedelta(minutes=minutes)))
+
+
+def of_type(records, event_type="passenger.position"):
+    return [r for r in records if r.event_type == event_type]
 
 
 class FrameAndGraphTests(unittest.TestCase):
@@ -70,20 +74,20 @@ class SimulationTests(unittest.TestCase):
         times = [when for when, _ in self.ticks]
         self.assertEqual(times[0], START + timedelta(seconds=5))
         self.assertTrue(all(b - a == timedelta(seconds=5) for a, b in zip(times, times[1:])))
-        for _, records in self.ticks[:3]:
-            self.assertGreater(len(records), 200)
+        for _, records in self.ticks[:3] + [t for t in self.ticks if t[0].second == 0][:1]:
+            self.assertGreater(len(of_type(records)), 200)
             for record in records:
                 EventEnvelope.model_validate(record.model_dump())
 
     def test_positions_stay_inside_terminal_zones(self):
-        zones = Counter(r.payload["indoor"]["zone_id"] for _, records in self.ticks for r in records)
+        zones = Counter(r.payload["indoor"]["zone_id"] for _, records in self.ticks for r in of_type(records))
         outside = zones.pop("SYN-HYD-ZONE-OUTSIDE", 0)
         self.assertLess(outside / (outside + sum(zones.values())), 0.001)
 
     def test_tracks_are_ordered_and_end_once(self):
         last_seq, ended = defaultdict(lambda: -1), set()
         for _, records in self.ticks:
-            for r in records:
+            for r in of_type(records):
                 self.assertNotIn(r.entity_id, ended)
                 self.assertEqual(r.sequence_no, last_seq[r.entity_id] + 1)
                 last_seq[r.entity_id] = r.sequence_no
@@ -96,7 +100,7 @@ class SimulationTests(unittest.TestCase):
         boards = {"SYN-HYD-BOARDING-DOM", "SYN-HYD-BOARDING-INT"}
         checked = 0
         for _, records in self.ticks:
-            for r in records:
+            for r in of_type(records):
                 p = r.payload
                 if p["activity"] not in ("queuing", "in_service") or p["touchpoint_id"] in boards:
                     continue
@@ -109,12 +113,42 @@ class SimulationTests(unittest.TestCase):
 
     def test_same_seed_and_start_give_the_same_tracks(self):
         _, _, _, again = short_run(minutes=1)
-        first = [(r.entity_id, r.payload["indoor"]["x"], r.payload["activity"]) for r in self.ticks[0][1]]
-        self.assertEqual(first, [(r.entity_id, r.payload["indoor"]["x"], r.payload["activity"]) for r in again[0][1]])
+        key = lambda records: [(r.entity_id, r.payload["indoor"]["x"], r.payload["activity"]) for r in of_type(records)]
+        self.assertEqual(key(self.ticks[0][1]), key(again[0][1]))
+
+    def test_minute_feeds_agree_with_the_positions(self):
+        minutes = [(when, records) for when, records in self.ticks if when.second == 0]
+        self.assertGreaterEqual(len(minutes), 5)
+        for when, records in minutes:
+            positions = [r.payload for r in of_type(records)]
+            present = [p for p in positions if p["activity"] not in ("boarded", "exited")]
+            queuing = Counter(p["touchpoint_id"] for p in present if p["activity"] == "queuing")
+            serving = Counter(p["touchpoint_id"] for p in present if p["activity"] == "in_service")
+            for r in of_type(records, "passenger.touchpoint"):
+                tp = r.payload
+                self.assertEqual(tp["queue_length"], queuing.get(tp["touchpoint_id"], 0), tp["touchpoint_id"])
+                self.assertEqual(tp["passengers_in_service"], serving.get(tp["touchpoint_id"], 0), tp["touchpoint_id"])
+            in_zone = Counter(p["indoor"]["zone_id"] for p in present)
+            for r in of_type(records, "passenger.aggregate"):
+                self.assertEqual(r.payload["passenger_count"], in_zone.get(r.payload["zone_id"], 0), r.payload["zone_id"])
+            kpi = of_type(records, "passenger.journey_kpi")[0].payload
+            self.assertEqual(kpi["people_in_terminal"], len(present))
+            self.assertEqual(kpi["people_queuing"], sum(queuing.values()))
+
+    def test_queue_feed_covers_the_scope_and_counts_up(self):
+        minutes = [records for when, records in self.ticks if when.second == 0]
+        first = {r.entity_id: r.payload for r in of_type(minutes[0], "passenger.touchpoint")}
+        last = {r.entity_id: r.payload for r in of_type(minutes[-1], "passenger.touchpoint")}
+        self.assertEqual(len(first), 16)
+        self.assertEqual({p["touchpoint_type"] for p in first.values()},
+                         {"entry", "check_in", "security", "boarding", "immigration"})
+        for tp_id, payload in last.items():
+            self.assertGreaterEqual(payload["throughput_since_midnight"], first[tp_id]["throughput_since_midnight"])
+        self.assertEqual(first["SYN-HYD-SECURITY-DOM"]["service_channels"], 12)  # open lanes, not installed
 
     def test_esri_record_has_wgs84_from_local_xy(self):
         locator = ZoneLocator.from_layout(self.layout)
-        record = to_esri_record(self.ticks[0][1][0], locator)
+        record = to_esri_record(of_type(self.ticks[0][1])[0], locator)
         x, y = locator.frame.from_wgs84(record["longitude"], record["latitude"])
         self.assertAlmostEqual(x, record["indoor_x"], delta=0.05)
         self.assertAlmostEqual(y, record["indoor_y"], delta=0.05)
@@ -126,7 +160,7 @@ class OutputTests(unittest.TestCase):
     def test_live_writer_rewrites_latest_files(self):
         config, layout, inventory, ticks = short_run(minutes=1, warmup=30)
         with tempfile.TemporaryDirectory() as out:
-            writer = PositionFileWriter(out, ZoneLocator.from_layout(layout), history=True)
+            writer = TwinFileWriter(out, ZoneLocator.from_layout(layout), layout, history=True, position_history=True)
             now = {"t": 0.0}
             publish_paced(iter(ticks), writer, origin=START, clock=lambda: now["t"],
                           sleep=lambda s: now.update(t=now["t"] + s), log=lambda _m: None)
@@ -135,21 +169,27 @@ class OutputTests(unittest.TestCase):
             geojson = json.loads((Path(out) / "passenger_positions_latest.geojson").read_text())
             with (Path(out) / "passenger_positions_history.csv").open(encoding="utf-8") as handle:
                 history = list(csv.DictReader(handle))
-        self.assertEqual(len(latest), len(ticks[-1][1]))
+            zones = json.loads((Path(out) / "zone_occupancy_latest.geojson").read_text())
+            queues_exist = (Path(out) / "passenger_queues_latest.csv").exists()
+            kpi = json.loads((Path(out) / "journey_kpis_latest.json").read_text())
+        self.assertEqual(len(latest), len(of_type(ticks[-1][1])))
         self.assertEqual(len(geojson["features"]), len(latest))
-        self.assertEqual(len(history), sum(len(r) for _, r in ticks))
+        self.assertEqual(len(history), sum(len(of_type(r)) for _, r in ticks))
+        self.assertEqual(zones["features"][0]["geometry"]["type"], "MultiPolygon")
+        self.assertTrue(queues_exist)
+        self.assertEqual(kpi["event_type"], "passenger.journey_kpi")
         self.assertEqual({row["event_time"] for row in latest}, {"2026-10-09T02:31:00Z"})
 
     def test_range_writes_csv_and_jsonl(self):
         with tempfile.TemporaryDirectory() as out:
             config, layout, _, _ = load_tracking(TRACKING)
-            paths, count = write_tracking_range(TRACKING, ZoneLocator.from_layout(layout), out, start=START, minutes=0.5)
+            paths, count = write_tracking_range(TRACKING, ZoneLocator.from_layout(layout), out, start=START, minutes=1.5)
             with paths[0].open(encoding="utf-8") as handle:
                 rows = list(csv.DictReader(handle))
             with paths[1].open(encoding="utf-8") as handle:
                 lines = handle.readlines()
-        self.assertEqual(len(rows), count)
-        self.assertEqual(len(lines), count)
+        self.assertEqual(len(rows), len(lines))
+        self.assertGreater(count, len(rows))  # positions plus the minute feeds
         self.assertEqual(list(rows[0])[:4], ["passenger_id", "journey", "activity", "touchpoint_id"])
 
 

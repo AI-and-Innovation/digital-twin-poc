@@ -58,8 +58,8 @@ def main(argv: list[str] | None = None) -> int:
                               help="Run in real time: rewrite passenger_queue_latest.* every minute and append to passenger_queue_history.csv")
     files_parser.add_argument("--minutes", type=int, help="--live only: stop after this many minutes (default: until Ctrl-C)")
     files_parser.add_argument("--speed", type=float, default=1.0, help="--live only: time compression; 60 = a minute per second")
-    pax_stream = sub.add_parser("pax-stream", help="Live passenger tracking: one batch of positions per interval to Kafka")
-    pax_files = sub.add_parser("pax-files", help="Passenger tracking to CSV/JSONL files (a time range), or --live latest files")
+    pax_stream = sub.add_parser("pax-stream", help="Live terminal simulation to Kafka: positions every 5 s; queues, zones and journeys every minute")
+    pax_files = sub.add_parser("pax-files", help="Terminal simulation to files: a time range as CSV/JSONL, or --live latest files")
     for p in (pax_stream, pax_files):
         p.add_argument("--tracking-config", default="config/passenger_tracking.json")
         p.add_argument("--zones", default="config/terminal_layout.json")
@@ -73,7 +73,10 @@ def main(argv: list[str] | None = None) -> int:
     pax_files.add_argument("--out", default="output", help="Folder for the files (default: output)")
     pax_files.add_argument("--live", action="store_true",
                            help="Run in real time and rewrite passenger_positions_latest.csv/.geojson every interval")
-    pax_files.add_argument("--history", action="store_true", help="--live only: also append every batch to passenger_positions_history.csv")
+    pax_files.add_argument("--history", action="store_true",
+                           help="--live only: also append the per-minute feeds (queues, zones, journeys) to *_history.csv")
+    pax_files.add_argument("--position-history", action="store_true",
+                           help="--live only: also append every position batch to passenger_positions_history.csv (large)")
     args = parser.parse_args(argv)
     try:
         if args.command == "publish":
@@ -220,19 +223,21 @@ def _pax_stream(args: argparse.Namespace) -> int:
 
 
 def _pax_files(args: argparse.Namespace) -> int:
-    from .tracking import PositionFileWriter, run_tracking_stream, write_tracking_range
+    from .tracking import TwinFileWriter, run_tracking_stream, write_tracking_range
 
     _check_start(args.start)
     locator = ZoneLocator.from_file(args.zones)
     if not args.live:
         paths, count = write_tracking_range(args.tracking_config, locator, args.out, start=args.start,
                                             minutes=args.minutes)
-        print(f"Wrote {count} position records:")
+        print(f"Wrote {count} records:")
         for path in paths:
             print(f"  {path}")
         return 0
-    writer = PositionFileWriter(args.out, locator, history=args.history)
-    print(f"Writing {Path(args.out) / 'passenger_positions_latest.csv'} (.geojson) every interval. Ctrl-C to stop.")
+    layout = json.loads(Path(args.zones).read_text(encoding="utf-8"))
+    writer = TwinFileWriter(args.out, locator, layout, history=args.history, position_history=args.position_history)
+    print(f"Writing {args.out}/passenger_positions_latest.* every interval and passenger_queues_latest.*, "
+          f"zone_occupancy_latest.*, journey_kpis_latest.* every minute. Ctrl-C to stop.")
     try:
         run_tracking_stream(args.tracking_config, writer, minutes=args.minutes, speed=args.speed,
                             start=args.start, create_topics=False)

@@ -1,18 +1,23 @@
-"""Synthetic passenger tracking inside RGIA Terminal 1.
+"""Synthetic passenger tracking inside RGIA Terminal 1 - one simulation, four feeds.
 
 Agent-based and deterministic for a given seed and start time:
 
-* A flight schedule (departures and arrivals, per journey type) creates passengers.
-  Departures arrive at the kerb ahead of their flight; arrivals come off buses.
+* A flight schedule (with an hourly profile) creates passengers. Departures arrive
+  at the kerb ahead of their flight; arrivals come off buses.
 * Each passenger follows a journey plan: walk the terminal's walkway graph, queue
-  at touchpoints (FIFO, service channels and times from the touchpoint inventory),
-  dwell airside, wait at the gate and board, or reclaim bags and exit.
-* Every ``interval_seconds`` each passenger in the terminal emits one
-  ``passenger.position`` record with local x/y, floor, zone, speed, heading,
-  activity and journey context. The last record of a track has activity
-  ``boarded`` or ``exited``.
+  at touchpoints (FIFO, open lanes and service times from config), dwell airside,
+  wait at the gate and board, or reclaim bags and exit.
 
-The queues here are connected: someone leaving check-in turns up at security.
+Everything published comes from those same passengers, so the feeds agree:
+
+* ``passenger.position``     every interval (5 s): one record per passenger.
+* ``passenger.touchpoint``   every minute: queue length, waits, throughput and target
+                             status per touchpoint, measured from the passengers served.
+* ``passenger.aggregate``    every minute: occupancy and density per zone, with 5 m cells.
+* ``passenger.journey_kpi``  every minute: terminal-wide journey times and counts.
+
+The simulation runs silently from local midnight (so "throughput since midnight"
+is complete), with coarse steps until the last 30 minutes before the first record.
 Positions are only as good as config/terminal_layout.json (real outlines from
 OpenStreetMap, schematic interior). All identifiers are synthetic.
 """
@@ -23,17 +28,19 @@ import heapq
 import json
 import math
 import random
-from collections import deque
+from collections import Counter, deque
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
+from zoneinfo import ZoneInfo
 
-from pydantic import AwareDatetime, Field
+from pydantic import AwareDatetime, Field, PrivateAttr
 
-from ..models import EventEnvelope, Model, NonEmpty
+from ..models import EventEnvelope, Model, NonEmpty, PassengerAggregate, PassengerJourneyKpi, PassengerTouchpoint
+from ..service_targets import ServiceTargets, nearest_rank, queue_attributes
 from ..spatial import WalkGraph, point_in_polygon
 from ..touchpoint_config import TouchpointInventory
 
@@ -41,6 +48,12 @@ DEPARTURES = ("domestic_departure", "international_departure", "ga_departure")
 ARRIVALS = ("domestic_arrival", "international_arrival", "ga_arrival")
 FLIGHT_PREFIX = {"domestic_departure": "DD", "international_departure": "ID", "ga_departure": "GD",
                  "domestic_arrival": "DA", "international_arrival": "IA", "ga_arrival": "GA"}
+# Completing one of these puts a departing passenger airside.
+AIRSIDE_TOUCHPOINTS = {"SYN-HYD-SECURITY-DOM", "SYN-HYD-SECURITY-PRM", "SYN-HYD-EMIGRATION",
+                       "SYN-HYD-EMIGRATION-EGATE", "SYN-HYD-EMIGRATION-PRM", "SYN-HYD-GA-SECURITY"}
+ACTIVITIES = ("walking", "queuing", "in_service", "dwelling", "at_gate", "reclaim")
+KPI_ID = "HYD-T1-JOURNEYS"
+SOURCE = "synthetic-passenger-tracker"
 
 
 class FlightStream(Model):
@@ -69,17 +82,26 @@ class TrackingConfig(Model):
     end_time: AwareDatetime
     interval_seconds: int = Field(gt=0)
     warmup_minutes: float = Field(ge=0)
+    warmup_from_local_midnight: bool = True
+    warmup_step_seconds: int = Field(default=30, gt=0)
+    timezone: NonEmpty = "Asia/Kolkata"
     seed: int
     layout_file: NonEmpty
     inventory_file: NonEmpty
+    service_targets_file: NonEmpty | None = None
     output_directory: NonEmpty
+    hourly_profile: list[float] | None = Field(default=None, min_length=24, max_length=24)
     flights: dict[str, FlightStream]
     boarding: Boarding
     arrival_buses: ArrivalBuses
+    open_channels: dict[str, int] = Field(default_factory=dict)
+    queue_feed_types: list[str] | None = None
+    kpi_rolling_minutes: float = Field(default=15, gt=0)
     shares: dict[str, float]
     walking_speed_mps: tuple[float, float]
     reclaim_wait_minutes: tuple[float, float]
     arrivals_hall_dwell_minutes: tuple[float, float]
+    _targets: ServiceTargets | None = PrivateAttr(default=None)
 
     model_config = Model.model_config | {"populate_by_name": True}
 
@@ -89,7 +111,13 @@ def load_tracking(path: str | Path) -> tuple[TrackingConfig, dict[str, Any], Tou
     config = TrackingConfig.model_validate_json(path.read_text(encoding="utf-8"))
     layout = json.loads((path.parent / config.layout_file).read_text(encoding="utf-8"))
     inventory = TouchpointInventory.model_validate_json((path.parent / config.inventory_file).read_text(encoding="utf-8"))
+    if config.service_targets_file:
+        config._targets = ServiceTargets.load(path.parent / config.service_targets_file)
     return config, layout, inventory, (path.parent / config.output_directory).resolve()
+
+
+def _targets(config: TrackingConfig) -> ServiceTargets | None:
+    return config._targets
 
 
 @dataclass
@@ -112,9 +140,13 @@ class Passenger:
     x: float
     y: float
     floor: str
+    spawned_at: float = 0.0
+    airside_at: float | None = None
+    joined: float = 0.0
     step: int = 0
     activity: str = "walking"
     touchpoint_id: str | None = None
+    zone: str = ""
     path: list[tuple[float, float, str]] = field(default_factory=list)
     until: float = 0.0
     moved: float = 0.0
@@ -123,11 +155,20 @@ class Passenger:
     done: bool = False
 
 
+@dataclass
+class TouchpointStats:
+    processed: int = 0
+    wait_sum: float = 0.0
+    service_sum: float = 0.0
+    since_midnight: int = 0
+    recent_starts: deque = field(default_factory=deque)  # (service start, wait) for the rolling p95
+
+
 class Queue:
-    """FIFO touchpoint (or gate) queue with parallel service channels and a physical layout."""
+    """FIFO queue with parallel service channels, served event by event within each step."""
 
     def __init__(self, queue_id: str, x: float, y: float, floor: str, direction: tuple[float, float],
-                 width: float, channels: int, service: tuple[float, float], touchpoint_id: str | None):
+                 width: float, channels: int, service: tuple[float, float], touchpoint_id: str):
         self.queue_id, self.x, self.y, self.floor = queue_id, x, y, floor
         norm = math.hypot(*direction) or 1.0
         self.dx, self.dy = direction[0] / norm, direction[1] / norm
@@ -135,7 +176,8 @@ class Queue:
         self.width, self.channels, self.service = width, channels, service
         self.touchpoint_id = touchpoint_id
         self.waiting: deque[Passenger] = deque()
-        self.serving: list[tuple[float, int, Passenger]] = []  # (ends, channel, pax)
+        self.serving: dict[int, tuple[float, float, float, Passenger]] = {}  # channel -> (end, start, wait, pax)
+        self.free_at = [-math.inf] * channels
         self.per_row = max(2, int(min(width, 30) / 0.75))
 
     def slot(self, index: int) -> tuple[float, float]:
@@ -153,53 +195,79 @@ class Queue:
     def exit_point(self) -> tuple[float, float]:
         return self.x - self.dx * 3, self.y - self.dy * 3
 
-    def update(self, now: float, rng: random.Random) -> list[Passenger]:
-        finished = [pax for ends, _, pax in self.serving if ends <= now]
-        self.serving = [s for s in self.serving if s[0] > now]
-        busy = {channel for _, channel, _ in self.serving}
-        for channel in range(self.channels):
-            if not self.waiting:
-                break
-            if channel in busy:
-                continue
-            pax = self.waiting.popleft()
-            self.serving.append((now + rng.uniform(*self.service), channel, pax))
-            pax.activity = "in_service"
-            pax.x, pax.y = self.channel_point(channel)
-            pax.floor = self.floor
+    def update(self, now: float, rng: random.Random, stats: TouchpointStats) -> list[tuple[Passenger, float]]:
+        """Serve up to ``now``; returns (passenger, service end) for everyone who finished."""
+        done = []
+        progressed = True
+        while progressed:
+            progressed = False
+            for channel in range(self.channels):
+                current = self.serving.get(channel)
+                if current is not None and current[0] <= now:
+                    end, start, wait, pax = current
+                    del self.serving[channel]
+                    self.free_at[channel] = end
+                    stats.processed += 1
+                    stats.wait_sum += wait
+                    stats.service_sum += end - start
+                    stats.since_midnight += 1
+                    done.append((pax, end))
+                    progressed = True
+                if channel not in self.serving and self.waiting:
+                    pax = self.waiting[0]
+                    start = max(self.free_at[channel], pax.joined)
+                    if start <= now:
+                        self.waiting.popleft()
+                        wait = start - pax.joined
+                        self.serving[channel] = (start + rng.uniform(*self.service), start, wait, pax)
+                        stats.recent_starts.append((start, wait))
+                        pax.activity = "in_service"
+                        pax.x, pax.y = self.channel_point(channel)
+                        pax.floor = self.floor
+                        progressed = True
         for index, pax in enumerate(self.waiting):
             pax.x, pax.y = self.slot(index)
             pax.floor = self.floor
-        return finished
+        return done
+
+
+def _area(polygon: list[list[float]]) -> float:
+    return abs(sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(polygon, polygon[1:] + polygon[:1]))) / 2
 
 
 class TerminalSimulation:
     def __init__(self, config: TrackingConfig, layout: dict[str, Any], inventory: TouchpointInventory,
                  start: datetime, end: datetime):
-        self.config, self.layout = config, layout
+        self.config, self.layout, self.inventory = config, layout, inventory
         # Two streams: the schedule (flights, passengers, plans) and motion (walk targets,
         # service times). Neither depends on the end time, so a longer run of the same
         # start replays the same tracks.
         self.plan_rng = random.Random(f"{config.seed}:{start.isoformat()}:plan")
         self.rng = random.Random(f"{config.seed}:{start.isoformat()}:motion")
+        self.local = ZoneInfo(config.timezone)
         self.graph = WalkGraph.from_layout(layout)
         self.frame_id = layout["frame"]["frame_id"]
         self.floor_z = {name: f["z"] for name, f in layout["floors"].items()}
         self.zones_by_floor: dict[str, list[tuple[str, list]]] = {}
+        self.zone_info: dict[str, dict[str, Any]] = {}
         for zone in layout["zones"]:
             self.zones_by_floor.setdefault(zone["floor"], []).append((zone["zone_id"], zone["polygons"]))
+            self.zone_info[zone["zone_id"]] = {"name": zone["name"], "floor": zone["floor"],
+                                               "area": round(sum(_area(p) for p in zone["polygons"]), 1)}
         self.areas = layout["areas"]
         self.gates = {g["gate_id"]: g for g in layout["gates"]}
         self.gate_pools = {flow: sorted(g["gate_id"] for g in layout["gates"] if g["flow"] == flow)
                            for flow in ("dom", "int")}
-        tp_specs = {tp.touchpoint_id: tp.simulation for tp in inventory.touchpoints}
+        self.touchpoints = {tp.touchpoint_id: tp for tp in inventory.touchpoints}
         self.queues: dict[str, Queue] = {}
         for tp_id, spot in layout["touchpoints"].items():
-            sim = tp_specs.get(tp_id)
-            if sim is None:
+            tp = self.touchpoints.get(tp_id)
+            if tp is None:
                 continue
+            sim = tp.simulation
+            channels = config.open_channels.get(tp_id, sim.service_channels)
             self.queues[tp_id] = Queue(tp_id, spot["x"], spot["y"], spot["floor"], tuple(spot["queue_direction"]),
-                                       spot["service_width_m"], sim.service_channels,
+                                       spot["service_width_m"], channels,
                                        (sim.service_time_min_seconds, sim.service_time_max_seconds), tp_id)
         b = config.boarding
         board_tp = {"dom": "SYN-HYD-BOARDING-DOM", "int": "SYN-HYD-BOARDING-INT"}
@@ -210,28 +278,56 @@ class TerminalSimulation:
             self.queues[gate["gate_id"]] = Queue(gate["gate_id"], gate["x"], gate["y"], gate["floor"],
                                                  inward if any(inward) else (0, 1), 6, b.channels_per_gate,
                                                  b.service_seconds, board_tp[gate["flow"]])
+        self.stats: dict[str, TouchpointStats] = {q.touchpoint_id: TouchpointStats() for q in self.queues.values()}
+        types = set(config.queue_feed_types) if config.queue_feed_types else None
+        self.feed_touchpoints = sorted(
+            tp_id for tp_id, tp in self.touchpoints.items()
+            if tp.enabled and (types is None or tp.touchpoint_type in types) and tp_id in self.stats)
         self.start = start.astimezone(timezone.utc)
         self.end = end.astimezone(timezone.utc)
-        self.warm_start = self.start - timedelta(minutes=config.warmup_minutes)
+        warm = self.start - timedelta(minutes=config.warmup_minutes)
+        if config.warmup_from_local_midnight:
+            midnight = self.start.astimezone(self.local).replace(hour=0, minute=0, second=0, microsecond=0)
+            warm = min(warm, midnight.astimezone(timezone.utc))
+        self.warm_start = warm
+        self.day = self.warm_start.astimezone(self.local).date()
         self.active: list[Passenger] = []
         self.counter = 0
+        self.sequences: Counter[str] = Counter()
+        rolling = config.kpi_rolling_minutes * 60
+        self.rolling = rolling
+        self.ev_airside: deque[tuple[float, float]] = deque()   # (time, kerb->airside minutes)
+        self.ev_boarded: deque[tuple[float, float]] = deque()   # (time, airside->boarding minutes)
+        self.ev_exited: deque[tuple[float, float]] = deque()    # (time, arrival->exit minutes)
         self._init_schedule()
 
     # -- schedule ------------------------------------------------------------
     # Flights are generated lazily, a little ahead of simulated time, so a live run
-    # with no end date costs the same as a short one.
+    # with no end date costs the same as a short one. An hourly profile (local time)
+    # shapes the rate by thinning.
     def _init_schedule(self) -> None:
         self.spawns: list[tuple[float, int, Passenger]] = []  # heap of (time, order, passenger)
         self._order = 0
         self._gate_free: dict[str, float] = {}
         self._streams: dict[str, dict[str, float]] = {}
+        self._profile = self.config.hourly_profile or [1.0] * 24
+        self._peak = max(self._profile) or 1.0
         for journey in DEPARTURES + ARRIVALS:
             stream = self.config.flights.get(journey)
             if stream is None or stream.per_hour <= 0:
                 continue
             lead = (stream.arrive_before_departure_minutes or (0, 0))[1] * 60 if journey in DEPARTURES else 0
-            first = self.warm_start.timestamp() - 3600 + self.plan_rng.expovariate(stream.per_hour / 3600)
-            self._streams[journey] = {"next": first, "number": 0, "lead": lead}
+            self._streams[journey] = {"next": self.warm_start.timestamp() - 3600, "number": 0, "lead": lead}
+            self._advance(journey)
+
+    def _advance(self, journey: str) -> None:
+        state, stream = self._streams[journey], self.config.flights[journey]
+        rate = stream.per_hour * self._peak / 3600
+        while True:
+            state["next"] += self.plan_rng.expovariate(rate)
+            hour = datetime.fromtimestamp(state["next"], self.local).hour
+            if self.plan_rng.random() * self._peak <= self._profile[hour]:
+                return
 
     def _extend_schedule(self, now: float) -> None:
         cfg, rng = self.config, self.plan_rng
@@ -241,7 +337,7 @@ class TerminalSimulation:
             # departures: generate far enough ahead that every passenger due by ``now`` exists
             while state["next"] <= now + state["lead"]:
                 t = state["next"]
-                state["next"] = t + rng.expovariate(stream.per_hour / 3600)
+                self._advance(journey)
                 state["number"] += 1
                 gate = None
                 if journey in ("domestic_departure", "international_departure"):
@@ -334,18 +430,25 @@ class TerminalSimulation:
         x, y, floor = self._point_in(start_area, rng)
         self.counter += 1
         return Passenger(f"SYN-PAX-{self.counter:06d}", f"SYN-PNR-{self.counter:06d}", journey, flight, plan,
-                         rng.uniform(*cfg.walking_speed_mps), x, y, floor)
+                         rng.uniform(*cfg.walking_speed_mps), x, y, floor, spawned_at=at)
 
     # -- movement and state --------------------------------------------------
     def _walk_to(self, pax: Passenger, x: float, y: float, floor: str) -> None:
         pax.path = self.graph.path_between(pax.x, pax.y, pax.floor, x, y, floor)
         pax.activity = "walking"
 
+    def _finish(self, pax: Passenger, activity: str, now: float) -> None:
+        pax.done, pax.activity = True, activity
+        if activity == "boarded" and pax.airside_at is not None:
+            self.ev_boarded.append((now, (now - pax.airside_at) / 60))
+        elif activity == "exited" and pax.journey in ARRIVALS:
+            self.ev_exited.append((now, (now - pax.spawned_at) / 60))
+
     def _next_step(self, pax: Passenger, now: float) -> None:
         """Start the passenger's next plan step (called when the previous one is complete)."""
         pax.touchpoint_id = None
         if pax.step >= len(pax.plan):
-            pax.done, pax.activity = True, "exited"
+            self._finish(pax, "exited", now)
             return
         step = pax.plan[pax.step]
         kind = step[0]
@@ -368,14 +471,18 @@ class TerminalSimulation:
                 pax.step += 1
                 self._next_step(pax, now)
         elif kind == "end":
-            pax.done, pax.activity = True, step[1]
+            self._finish(pax, step[1], now)
+
+    def _join(self, pax: Passenger, queue: Queue, now: float) -> None:
+        queue.waiting.append(pax)
+        pax.joined = now
+        pax.activity, pax.touchpoint_id = "queuing", queue.touchpoint_id
 
     def _arrived(self, pax: Passenger, now: float) -> None:
         step = pax.plan[pax.step]
         kind = step[0]
         if kind == "tp":
-            self.queues[step[1]].waiting.append(pax)
-            pax.activity, pax.touchpoint_id = "queuing", step[1]
+            self._join(pax, self.queues[step[1]], now)
         elif kind == "gate":
             pax.activity, pax.until = "at_gate", step[2]
         else:
@@ -405,6 +512,11 @@ class TerminalSimulation:
 
     def tick(self, now: float, dt: float) -> list[Passenger]:
         """Advance to ``now``; returns everyone to report (including tracks that just ended)."""
+        day = datetime.fromtimestamp(now, self.local).date()
+        if day != self.day:  # local midnight: "since midnight" totals restart
+            self.day = day
+            for stats in self.stats.values():
+                stats.since_midnight = 0
         self._extend_schedule(now)
         while self.spawns and self.spawns[0][0] <= now:
             _, _, pax = heapq.heappop(self.spawns)
@@ -422,17 +534,18 @@ class TerminalSimulation:
                 pax.step += 1
                 self._next_step(pax, now)
             elif pax.activity == "at_gate" and now >= pax.until:
-                queue = self.queues[pax.plan[pax.step][1]]
-                queue.waiting.append(pax)
-                pax.activity, pax.touchpoint_id = "queuing", queue.touchpoint_id
+                self._join(pax, self.queues[pax.plan[pax.step][1]], now)
         for queue in self.queues.values():
-            for pax in queue.update(now, self.rng):
+            for pax, ended in queue.update(now, self.rng, self.stats[queue.touchpoint_id]):
                 if queue.queue_id in self.gates:
-                    pax.done, pax.activity = True, "boarded"
-                else:
-                    pax.x, pax.y = queue.exit_point()
-                    pax.step += 1
-                    self._next_step(pax, now)
+                    self._finish(pax, "boarded", ended)
+                    continue
+                if queue.touchpoint_id in AIRSIDE_TOUCHPOINTS and pax.journey in DEPARTURES:
+                    pax.airside_at = ended
+                    self.ev_airside.append((ended, (ended - pax.spawned_at) / 60))
+                pax.x, pax.y = queue.exit_point()
+                pax.step += 1
+                self._next_step(pax, now)
         report = self.active
         self.active = [p for p in self.active if not p.done]
         return report
@@ -444,44 +557,153 @@ class TerminalSimulation:
                 return zone_id
         return "SYN-HYD-ZONE-OUTSIDE"
 
-    def record(self, pax: Passenger, when: datetime, airport_id: str, terminal_id: str) -> EventEnvelope:
+    def _envelope(self, event_type: str, entity: str, when: datetime, payload: dict[str, Any]) -> EventEnvelope:
+        sequence = self.sequences[entity]
+        self.sequences[entity] += 1
+        return EventEnvelope.model_construct(
+            event_id=uuid5(NAMESPACE_URL, f"airport-eye:{event_type}:{self.start.isoformat()}:{entity}:{sequence}"),
+            event_type=event_type, schema_version="1.0.0", airport_id=self.inventory.airport_id,
+            terminal_id="HYD-MAIN", source_system=SOURCE, entity_id=entity,
+            event_time=when, ingestion_time=when, sequence_no=sequence, payload=payload)
+
+    def record(self, pax: Passenger, when: datetime) -> EventEnvelope:
         speed = round(pax.moved / self.config.interval_seconds, 2)
+        pax.zone = self.zone_of(pax.x, pax.y, pax.floor)
         payload = {
             "passenger_id": pax.pax_id, "pnr_id": pax.pnr_id, "flight_id": pax.flight.flight_id,
             "indoor": {"coordinate_frame_id": self.frame_id, "x": round(pax.x, 2), "y": round(pax.y, 2),
-                       "z": self.floor_z.get(pax.floor, 0.0), "floor": pax.floor,
-                       "zone_id": self.zone_of(pax.x, pax.y, pax.floor),
+                       "z": self.floor_z.get(pax.floor, 0.0), "floor": pax.floor, "zone_id": pax.zone,
                        "grid_id": f"{pax.floor}-{math.floor(pax.x / 5)}-{math.floor(pax.y / 5)}"},
             "speed_mps": speed, "heading_deg": round(pax.heading, 1) % 360,
             "movement_state": "walking" if speed > 0.05 else "stationary",
             "journey": pax.journey, "activity": pax.activity, "touchpoint_id": pax.touchpoint_id,
             "gate_id": pax.flight.gate_id,
         }
-        sequence = pax.sequence
-        pax.sequence += 1
-        return EventEnvelope.model_construct(
-            event_id=uuid5(NAMESPACE_URL, f"airport-eye:pax:{self.start.isoformat()}:{pax.pax_id}:{sequence}"),
-            event_type="passenger.position", schema_version="1.0.0", airport_id=airport_id,
-            terminal_id=terminal_id, source_system="synthetic-passenger-tracker", entity_id=pax.pax_id,
-            event_time=when, ingestion_time=when, sequence_no=sequence, payload=payload)
+        return self._envelope("passenger.position", pax.pax_id, when, payload)
+
+    def minute_records(self, now: float, when: datetime, report: bool) -> list[EventEnvelope]:
+        """Touchpoint, zone and journey records for the minute ending ``now``; resets the minute counters."""
+        records: list[EventEnvelope] = []
+        window_start = when - timedelta(seconds=60)
+        targets = _targets(self.config)
+        p95_window = (targets.p95_window_minutes if targets else 30) * 60
+        for stats in self.stats.values():
+            while stats.recent_starts and stats.recent_starts[0][0] < now - p95_window:
+                stats.recent_starts.popleft()
+        tp_payloads = []
+        if report:
+            by_tp: dict[str, list[Queue]] = {}
+            for queue in self.queues.values():
+                by_tp.setdefault(queue.touchpoint_id, []).append(queue)
+            for tp_id in self.feed_touchpoints:
+                tp, stats, queues = self.touchpoints[tp_id], self.stats[tp_id], by_tp[tp_id]
+                channels = sum(q.channels for q in queues)
+                queue_length = sum(len(q.waiting) for q in queues)
+                in_service = sum(len(q.serving) for q in queues)
+                extra = {}
+                if targets is not None:
+                    open_tp = tp.model_copy(update={"simulation": tp.simulation.model_copy(
+                        update={"service_channels": channels})})
+                    extra = queue_attributes(targets, open_tp, queue_length=queue_length, in_service=in_service,
+                                             processed=stats.processed, interval_seconds=60,
+                                             recent_waits=[w for _, w in stats.recent_starts])
+                payload = PassengerTouchpoint(
+                    touchpoint_id=tp_id, touchpoint_type=tp.touchpoint_type, zone_id=tp.zone_id,
+                    window_start=window_start, window_end=when, queue_length=queue_length,
+                    passengers_in_service=in_service, processed_passengers=stats.processed,
+                    avg_wait_time_seconds=round(stats.wait_sum / stats.processed, 3) if stats.processed else None,
+                    avg_processing_time_seconds=round(stats.service_sum / stats.processed, 3) if stats.processed else None,
+                    throughput_since_midnight=stats.since_midnight, service_day=self.day.isoformat(), **extra,
+                ).model_dump(mode="json")
+                tp_payloads.append(payload)
+                records.append(self._envelope("passenger.touchpoint", tp_id, when, payload))
+        for stats in self.stats.values():
+            stats.processed, stats.wait_sum, stats.service_sum = 0, 0.0, 0.0
+        for events in (self.ev_airside, self.ev_boarded, self.ev_exited):
+            while events and events[0][0] < now - self.rolling:
+                events.popleft()
+        if not report:
+            return records
+
+        people = [p for p in self.active if not p.done]
+        cells: dict[str, Counter[str]] = {}
+        activity: dict[str, Counter[str]] = {}
+        for pax in people:
+            zone = pax.zone or self.zone_of(pax.x, pax.y, pax.floor)
+            cells.setdefault(zone, Counter())[f"{pax.floor}-{math.floor(pax.x / 5)}-{math.floor(pax.y / 5)}"] += 1
+            activity.setdefault(zone, Counter())[pax.activity] += 1
+        for zone_id, info in self.zone_info.items():
+            zone_cells, acts = cells.get(zone_id, Counter()), activity.get(zone_id, Counter())
+            count = sum(zone_cells.values())
+            payload = PassengerAggregate(
+                zone_id=zone_id, coordinate_frame_id=self.frame_id, floor=info["floor"],
+                window_start=window_start, window_end=when, count_semantics="snapshot_at_window_end",
+                passenger_count=count,
+                cells=[{"grid_id": g, "passenger_count": n, "area_m2": 25.0} for g, n in sorted(zone_cells.items())],
+                zone_name=info["name"], area_m2=info["area"],
+                density_per_100m2=round(count / info["area"] * 100, 3) if info["area"] else None,
+                **{f"people_{a}": acts.get(a, 0) for a in ACTIVITIES},
+            ).model_dump(mode="json")
+            records.append(self._envelope("passenger.aggregate", zone_id, when, payload))
+
+        def pct(events: deque, q: float) -> float | None:
+            values = [v for _, v in events]
+            return round(nearest_rank(values, q), 1) if values else None
+
+        waits = [(p.get("estimated_wait_seconds") or 0, p["touchpoint_id"]) for p in tp_payloads]
+        longest = max(waits, default=(None, None))
+        payload = PassengerJourneyKpi(
+            kpi_id=KPI_ID, window_start=window_start, window_end=when,
+            rolling_window_minutes=self.config.kpi_rolling_minutes,
+            people_in_terminal=len(people),
+            people_departing=sum(p.journey in DEPARTURES for p in people),
+            people_arriving=sum(p.journey in ARRIVALS for p in people),
+            people_queuing=sum(p.activity == "queuing" for p in people),
+            departures_cleared_security=len(self.ev_airside),
+            kerb_to_airside_p50_minutes=pct(self.ev_airside, 0.5),
+            kerb_to_airside_p90_minutes=pct(self.ev_airside, 0.9),
+            passengers_boarded=len(self.ev_boarded),
+            airside_to_boarding_p50_minutes=pct(self.ev_boarded, 0.5),
+            arrivals_exited=len(self.ev_exited),
+            arrival_to_exit_p50_minutes=pct(self.ev_exited, 0.5),
+            arrival_to_exit_p90_minutes=pct(self.ev_exited, 0.9),
+            longest_wait_touchpoint_id=longest[1] if longest[0] else None,
+            longest_estimated_wait_seconds=longest[0] if longest[0] else None,
+            touchpoints_busy=sum(p.get("status") == "busy" for p in tp_payloads),
+            touchpoints_congested=sum(p.get("status") == "congested" for p in tp_payloads),
+        ).model_dump(mode="json")
+        records.append(self._envelope("passenger.journey_kpi", KPI_ID, when, payload))
+        return records
 
 
 def generate_ticks(config: TrackingConfig, layout: dict[str, Any], inventory: TouchpointInventory,
                    start: datetime | None = None, end: datetime | None = None,
                    ) -> Iterator[tuple[datetime, list[EventEnvelope]]]:
-    """Warm up silently, then yield (time, records) once per interval from ``start`` to ``end``."""
+    """Warm up silently, then yield (time, records) once per interval from ``start`` to ``end``.
+
+    Every batch has the passenger positions; batches on a whole minute also carry the
+    touchpoint, zone and journey records for the minute that just ended.
+    """
     start = (start or config.start_time).astimezone(timezone.utc)
     end = (end or config.end_time).astimezone(timezone.utc)
     sim = TerminalSimulation(config, layout, inventory, start, end)
     dt = config.interval_seconds
+    fine_from = start - timedelta(minutes=30)
     now = sim.warm_start
-    terminal = "HYD-MAIN"
     while now < end:
-        now += timedelta(seconds=dt)
-        people = sim.tick(now.timestamp(), dt)
-        if now <= start:  # warm-up: simulate, do not report
-            continue
-        yield now, [sim.record(p, now, inventory.airport_id, terminal) for p in people]
+        step = dt if now >= fine_from else min(config.warmup_step_seconds, (fine_from - now).total_seconds())
+        # never step over a whole minute: the minute counters reset there
+        to_minute = 60 - (now.timestamp() % 60)
+        step = min(step, to_minute) if to_minute > 1e-6 else step
+        now += timedelta(seconds=step)
+        ts = now.timestamp()
+        people = sim.tick(ts, step)
+        reporting = now > start
+        records = [sim.record(p, now) for p in people] if reporting else []
+        if abs(ts - round(ts)) < 1e-3 and round(ts) % 60 == 0:
+            records += sim.minute_records(ts, now, reporting)
+        if reporting:
+            yield now, records
 
 
 def generate(config: TrackingConfig, layout: dict[str, Any], inventory: TouchpointInventory,
