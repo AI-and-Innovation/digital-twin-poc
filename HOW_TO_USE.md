@@ -6,7 +6,10 @@ Velocity / GeoEvent Server. Every minute it sends one record for each of 16
 touchpoints (entry, check-in, security, boarding, immigration) with the queue length, the wait time,
 the processing time, the throughput since midnight, the target status and a map location.
 
-**All data is synthetic.** Map locations are placeholders.
+It also tracks synthetic passengers through the terminal every 5 seconds (section 4b and
+`docs/PASSENGER_TRACKING.md`).
+
+**All data is synthetic.** The terminal outline is real (OpenStreetMap); positions inside it are schematic.
 
 ## 1. What is in this package
 
@@ -14,10 +17,11 @@ the processing time, the throughput since midnight, the target status and a map 
 |---|---|
 | `HOW_TO_USE.md` | This guide |
 | `docs/ESRI_SETUP.md` | Full reference: every field, a sample record, Esri feed settings, targets and calculations |
+| `docs/PASSENGER_TRACKING.md` | Passenger tracking: where coordinates come from, how passengers move, the position feed |
 | `sample_output/` | Ready-made data to inspect without running anything: one hour, 960 records, as CSV, JSONL and a readable JSON sample |
 | `scripts/local_poc.sh` | One-command runner (setup, queue files, Kafka demo, Kafka UI, tests) |
 | `src/airport_eye/` | The simulator and the Kafka publisher (Python) |
-| `config/` | Touchpoints, arrival rates, service times, wait targets, map coordinates |
+| `config/` | Touchpoints, arrival rates, service times, wait targets, terminal layout, passenger tracking settings |
 | `docker-compose.yml` | Local Kafka broker and Kafka UI |
 
 ## 2. Just want to look at the data?
@@ -74,6 +78,19 @@ scripts/local_poc.sh demo          # starts Kafka, the map, and the per-minute p
 `demo` opens a live map at <http://127.0.0.1:8080> and publishes one batch of 16 records per minute
 until you press Ctrl-C. For a quick look, run `scripts/local_poc.sh demo --speed 60` (one batch per
 second). Don't use `--speed` when Esri is ingesting, because event times then run ahead of the clock.
+
+## 4b. Passenger tracking
+
+```bash
+scripts/local_poc.sh pax-files --minutes 15     # 15 minutes of positions to output/ as CSV and JSONL (no Kafka)
+scripts/local_poc.sh pax-files --live           # rewrite output/passenger_positions_latest.csv/.geojson every 5 s
+scripts/local_poc.sh pax                        # live to Kafka topic airport-eye.poc.esri.passenger.position
+```
+
+`demo` already runs the passenger tracking alongside the queue feed. On the map, passengers are small
+dots coloured by what they are doing (walking, queuing, being served, dwelling, at the gate, at baggage
+reclaim); use the floor buttons to switch between the departures (L1) and arrivals (L0) levels.
+Details and every field: `docs/PASSENGER_TRACKING.md`.
 
 ### See the live data
 

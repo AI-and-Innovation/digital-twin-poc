@@ -1,0 +1,42 @@
+{
+  "_note": "Synthetic passenger tracking for RGIA Terminal 1. Flight rates, passenger counts, shares and timings are POC assumptions, not RGIA data. Volumes are kept laptop-sized (about 1,500-2,500 people in the terminal at once); scale per_hour and passengers up for load tests.",
+  "start_time": "2026-10-09T08:00:00+05:30",
+  "end_time": "2026-10-09T08:15:00+05:30",
+  "interval_seconds": 5,
+  "warmup_minutes": 240,
+  "seed": 7,
+  "layout_file": "terminal_layout.json",
+  "inventory_file": "hyderabad_touchpoints.json",
+  "output_directory": "../generated_data",
+  "flights": {
+    "domestic_departure": {"per_hour": 8, "passengers": [60, 120], "arrive_before_departure_minutes": [60, 120]},
+    "international_departure": {"per_hour": 2, "passengers": [80, 150], "arrive_before_departure_minutes": [120, 200]},
+    "domestic_arrival": {"per_hour": 6, "passengers": [60, 120]},
+    "international_arrival": {"per_hour": 2, "passengers": [80, 150]},
+    "ga_departure": {"per_hour": 0.5, "passengers": [2, 6], "arrive_before_departure_minutes": [30, 60]},
+    "ga_arrival": {"per_hour": 0.5, "passengers": [2, 6]}
+  },
+  "boarding": {
+    "opens_before_departure_minutes": 35,
+    "closes_before_departure_minutes": 10,
+    "channels_per_gate": 2,
+    "service_seconds": [5, 12],
+    "gate_turnaround_minutes": 50
+  },
+  "arrival_buses": {"first_bus_after_arrival_minutes": 4, "minutes_between_buses": 3, "passengers_per_bus": 60},
+  "shares": {
+    "digiyatra_entry": 0.35,
+    "prm": 0.02,
+    "domestic_web_checkin_no_bags": 0.35,
+    "domestic_kiosk": 0.15,
+    "domestic_city_checkin": 0.03,
+    "international_kiosk": 0.10,
+    "international_web_checkin_no_bags": 0.08,
+    "emigration_egate": 0.15,
+    "immigration_egate": 0.20,
+    "arrival_checked_bags": 0.6
+  },
+  "walking_speed_mps": [0.9, 1.5],
+  "reclaim_wait_minutes": [5, 20],
+  "arrivals_hall_dwell_minutes": [0, 4]
+}

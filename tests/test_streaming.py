@@ -24,7 +24,7 @@ class StreamTests(unittest.TestCase):
             holder["p"] = FakeProducer(settings)
             return holder["p"]
 
-        pub = KafkaPublisher(kafka, fmt="esri", locator=ZoneLocator.from_file(ROOT / "config/zone_locations.json"),
+        pub = KafkaPublisher(kafka, fmt="esri", locator=ZoneLocator.from_file(ROOT / "config/terminal_layout.json"),
                              producer_factory=factory)
         pub.ensure_topics = lambda topics, timeout=20.0: topics  # no broker in unit tests
         return pub, holder
@@ -63,18 +63,23 @@ class StreamTests(unittest.TestCase):
         t = datetime(2026, 10, 8, 9, 7, 42, tzinfo=timezone.utc)
         self.assertEqual(floor_to_interval(t, 60), datetime(2026, 10, 8, 9, 7, tzinfo=timezone.utc))
 
-    def test_touchpoints_in_one_zone_get_distinct_nearby_points(self):
-        locator = ZoneLocator.from_file(ROOT / "config/zone_locations.json")
+    def test_touchpoints_sit_at_their_layout_positions_inside_the_terminal(self):
+        import json
+        from airport_eye.spatial import point_in_polygon
+        layout = json.loads((ROOT / "config/terminal_layout.json").read_text())
+        locator = ZoneLocator.from_layout(layout)
         a = locator.locate("SYN-HYD-ZONE-DEPARTURES", "SYN-HYD-ENTRY")
         b = locator.locate("SYN-HYD-ZONE-DEPARTURES", "SYN-HYD-DIGIYATRA-ENTRY")
-        zone = locator.locate("SYN-HYD-ZONE-DEPARTURES")
-        self.assertNotEqual((a["longitude"], a["latitude"]), (b["longitude"], b["latitude"]))
-        self.assertEqual(a, locator.locate("SYN-HYD-ZONE-DEPARTURES", "SYN-HYD-ENTRY"))  # repeatable
-        metres = math.hypot((a["longitude"] - zone["longitude"]) * 106000, (a["latitude"] - zone["latitude"]) * 111000)
-        self.assertTrue(4 < metres < 16, metres)
+        metres = math.hypot((a["longitude"] - b["longitude"]) * 106260, (a["latitude"] - b["latitude"]) * 110574)
+        self.assertAlmostEqual(metres, 55, delta=1)  # 20 m and 75 m along the entry facade
+        self.assertEqual(a["floor"], "L1")
+        buildings = [bld["polygon"] for bld in layout["buildings"]]
+        for tp in ("SYN-HYD-CHECKIN-DOM", "SYN-HYD-SECURITY-DOM", "SYN-HYD-IMMIGRATION", "SYN-HYD-SECURITY-INT"):
+            x, y = locator.frame.from_wgs84(locator.touchpoints[tp]["longitude"], locator.touchpoints[tp]["latitude"])
+            self.assertTrue(any(point_in_polygon(x, y, poly) for poly in buildings), tp)
 
     def test_every_active_touchpoint_has_a_location(self):
-        locator = ZoneLocator.from_file(ROOT / "config/zone_locations.json")
+        locator = ZoneLocator.from_file(ROOT / "config/terminal_layout.json")
         with open(ROOT / "generated_data/passenger_touchpoint.jsonl", encoding="utf-8") as handle:
             for line in handle:
                 rec = to_esri_record(EventEnvelope.model_validate_json(line), locator)

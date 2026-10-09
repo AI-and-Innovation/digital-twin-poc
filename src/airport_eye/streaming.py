@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import datetime, timedelta, timezone
 from itertools import groupby
 from pathlib import Path
+from typing import Any
 
 from .generators.passenger_touchpoint import active_touchpoints, generate
 from .publishers.kafka import KafkaPublisher
@@ -58,20 +59,40 @@ def run_stream(
     if create_topics:
         created = publisher.ensure_topics([publisher.topic_for_type("passenger.touchpoint")])
         log(f"Topics ready: {publisher.topic_for_type('passenger.touchpoint')}" + (" (created)" if created else ""))
+    batches = ((window_end, list(events)) for window_end, events in
+               groupby(generate(live, inventory, targets), key=lambda e: e.event_time))
+    publish_paced(batches, publisher, origin=origin, speed=speed, clock=clock, sleep=sleep, log=log)
+    return publisher.stats()
+
+
+def publish_paced(
+    batches: Iterable[tuple[datetime, list]],
+    publisher: Any,
+    *,
+    origin: datetime,
+    speed: float = 1.0,
+    clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+    log: Callable[[str], None] = print,
+    every: int = 1,
+) -> None:
+    """Publish each (event time, records) batch when its event time is due.
+
+    ``origin`` is the event time that maps to "now"; at ``speed`` 1 a batch for
+    origin + 60 s goes out 60 s after the first call. ``every`` thins the log.
+    """
     began = clock()
-    batches = 0
-    for window_end, events in groupby(generate(live, inventory, targets), key=lambda e: e.event_time):
-        due = (window_end - origin).total_seconds() / speed
+    count = 0
+    for when, events in batches:
+        due = (when - origin).total_seconds() / speed
         wait = due - (clock() - began)
         if wait > 0:
             sleep(wait)
-        count = 0
         for event in events:
             publisher.publish(event)
-            count += 1
         publisher.flush()
-        batches += 1
-        stats = publisher.stats()
-        log(f"[{window_end.strftime('%H:%M:%SZ')}] batch {batches}: {count} records "
-            f"(delivered {stats['delivered']}, failed {stats['failed']})")
-    return publisher.stats()
+        count += 1
+        if count % every == 0 or count == 1:
+            stats = publisher.stats()
+            log(f"[{when.strftime('%H:%M:%SZ')}] batch {count}: {len(events)} records "
+                f"(delivered {stats['delivered']}, failed {stats['failed']})")

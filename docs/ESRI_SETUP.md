@@ -45,7 +45,7 @@ They stay in the inventory; the switch is `include_types` in `config/passenger_t
 |---|---|---|
 | `entity_id` | string | Touchpoint ID. **Use as the track/ID field.** |
 | `event_time_epoch_ms` | long | End of the one-minute window, UTC epoch milliseconds. **Use as the time field** (no date format needed). |
-| `longitude`, `latitude` | double | WGS84 (EPSG:4326). **Use as X / Y.** *Synthetic placeholders*, see section 5. |
+| `longitude`, `latitude` | double | WGS84 (EPSG:4326). **Use as X / Y.** Inside the real terminal outline; interior positions are schematic, see section 5. |
 | `floor` | string | Floor label of the zone (`L0`). |
 | `touchpoint_type` | string | entry, check_in, security, boarding, immigration |
 | `zone_id` | string | Terminal zone the touchpoint is in. |
@@ -203,13 +203,15 @@ Suggested feed settings (please confirm against your product version):
 
 ## 5. Known limits and questions for Esri
 
-- **Locations are placeholders.** Each zone is a point on an arbitrary grid near the airport; touchpoints
-  in one zone are spread a few metres apart so they do not stack. Real locations need terminal
-  floor-plan coordinates or an Esri indoor/BIM layer.
+- **Locations are schematic inside the real building.** The terminal outline and gates come from
+  OpenStreetMap; touchpoint positions, zones and floors are drawn inside it
+  (`config/terminal_layout.json`, see `docs/PASSENGER_TRACKING.md`). Exact positions need GHIAL's
+  floor plans or an Esri indoor/BIM layer.
 - **Is this the schema you want?** Field names and the epoch-millisecond time follow Esri's public
   documentation, not an agreed feed definition. Tell us any renames or extra fields.
-- **Queues are independent.** Each touchpoint simulates its own arrivals; people do not move from entry to
-  check-in to security. That arrives with passenger positions (next).
+- **Queues are independent.** Each touchpoint in this feed simulates its own arrivals. The passenger
+  tracking feed (`docs/PASSENGER_TRACKING.md`) does connect them, with people moving from entry to
+  check-in to security; the queue feed is not yet derived from it.
 - The sample file is one hour (08:00 to 09:00 IST). Queues are simulated from local midnight, so totals in the sample already include the earlier hours.
 
 ## 6. Targets and how the queue attributes are calculated
@@ -251,5 +253,6 @@ would be overloaded. Nothing in the inventory was changed. Use RGIA observations
 ## 7. Next
 
 1. 100,000 temperature points, one reading per minute.
-2. Passenger positions with latitude/longitude inside the terminal, following the same synthetic
-   passenger from entry to the gate.
+2. Passenger positions: done, see `docs/PASSENGER_TRACKING.md` (topic
+   `airport-eye.poc.esri.passenger.position`). Next there: derive the queue feed from the tracked
+   passengers, and swap the schematic interior for GHIAL floor plans.

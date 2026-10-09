@@ -120,6 +120,14 @@ class PassengerPosition(Model):
     speed_mps: float = Field(ge=0)
     heading_deg: float = Field(ge=0, lt=360)
     movement_state: Literal["walking", "stationary"]
+    # Optional journey context (see generators/passenger.py). Defaults keep older records valid.
+    journey: Literal["domestic_departure", "international_departure", "domestic_arrival",
+                     "international_arrival", "ga_departure", "ga_arrival"] | None = None
+    activity: Literal["walking", "queuing", "in_service", "dwelling", "at_gate", "reclaim",
+                      "boarded", "exited"] | None = Field(
+        default=None, description="'boarded' and 'exited' are the last record of a track")
+    touchpoint_id: str | None = Field(default=None, description="Touchpoint being queued at or served by")
+    gate_id: str | None = None
 
 
 class HeatmapCell(Model):

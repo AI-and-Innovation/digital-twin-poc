@@ -83,7 +83,7 @@ class PublisherTests(unittest.TestCase):
 
 class EsriProjectionTests(unittest.TestCase):
     def setUp(self):
-        self.locator = ZoneLocator.from_file(ROOT / "config" / "zone_locations.json")
+        self.locator = ZoneLocator.from_file(ROOT / "config" / "terminal_layout.json")
 
     def test_record_is_flat_with_epoch_time(self):
         rec = to_esri_record(sample("facility_telemetry.json"), self.locator)

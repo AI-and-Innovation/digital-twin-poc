@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AirportEye - local Esri feed viewer</title>
+<title>AirportEye - queues and passenger tracking</title>
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <style>
   :root {
@@ -25,7 +25,7 @@
   .dot.live { background: var(--ok); box-shadow: 0 0 0 3px rgba(46,158,91,.2); }
   .dot.stale { background: var(--warn); }
   .dot.err { background: var(--bad); }
-  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 12px; }
   .stat { background: var(--bg); border-radius: 8px; padding: 8px 10px; }
   .stat b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
   .stat span { color: var(--muted); font-size: 11px; }
@@ -46,6 +46,8 @@
   #map { position: absolute; inset: 0; background: #dfe5ec; }
   .legend { position: absolute; z-index: 500; right: 12px; bottom: 28px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 12px; }
   .legend div { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+  .legend #paxLegend { display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; margin: 0; }
+  .legend #paxLegend div { margin: 2px 0; }
   .legend i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
   .banner { position: absolute; z-index: 500; left: 50%; top: 12px; transform: translateX(-50%); background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,.12); }
   .leaflet-popup-content { margin: 12px 14px; font: 13px/1.4 system-ui, sans-serif; }
@@ -59,14 +61,16 @@
 <body>
 <aside>
   <header>
-    <h1>AirportEye - touchpoint queues</h1>
+    <h1>AirportEye - queues and passenger tracking</h1>
     <div class="sub">Local view of the Esri feed (flat JSON on Kafka). Not an Esri product.</div>
     <div class="status"><span class="dot" id="dot"></span><span id="statusText">Connecting...</span></div>
     <div class="stats">
       <div class="stat"><b id="sTouch">0</b><span>touchpoints</span></div>
       <div class="stat"><b id="sMsgs">0</b><span>records received</span></div>
       <div class="stat"><b id="sQueue">0</b><span>people queuing</span></div>
+      <div class="stat"><b id="sPax">0</b><span>passengers tracked</span></div>
     </div>
+    <div class="chips" id="floors" style="padding:10px 0 0;border:0"></div>
   </header>
   <div class="chips" id="chips"></div>
   <div class="list">
@@ -80,11 +84,14 @@
   <div id="map"></div>
   <div class="banner" id="banner" hidden></div>
   <div class="legend">
+    <div style="font-weight:600">Touchpoint queues</div>
     <div><i style="background:var(--ok)"></i>Normal (under 60% of wait target)</div>
     <div><i style="background:var(--warn)"></i>Busy (60-100%)</div>
     <div><i style="background:var(--bad)"></i>Congested (target breached)</div>
     <div><i style="background:#8a94a6"></i>No wait target set</div>
-    <div class="sub" style="color:var(--muted)">Locations are synthetic placeholders</div>
+    <div style="font-weight:600;margin-top:6px">Passengers <span id="paxCounts" class="sub"></span></div>
+    <div id="paxLegend"></div>
+    <div class="sub" style="color:var(--muted);max-width:260px">Outlines: OpenStreetMap. Interior layout is schematic. All passengers are synthetic.</div>
   </div>
 </main>
 <script src="vendor/leaflet/leaflet.js"></script>
@@ -102,7 +109,10 @@
   function pretty(t) { return String(t).replace(/_/g, " "); }
   function nice(id) { return id.replace(/^SYN-HYD-/, ""); }
 
-  var map = L.map("map", { zoomControl: true }).setView([17.2394, 78.4294], 17);
+  var map = L.map("map", { zoomControl: true }).setView([17.2356, 78.4290], 17);
+  map.createPane("layout").style.zIndex = 350;
+  map.createPane("touch").style.zIndex = 450;
+  map.createPane("pax").style.zIndex = 460;
   var tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19, attribution: "&copy; OpenStreetMap contributors"
   }).addTo(map);
@@ -176,16 +186,18 @@
     last.forEach(function (f) {
       var p = f.properties, id = p.entity_id;
       if (hidden[p.touchpoint_type]) return;
+      if (floor !== "all" && p.floor && p.floor !== floor) return;
       seen[id] = true;
       var ll = [f.geometry.coordinates[1], f.geometry.coordinates[0]], q = p.queue_length || 0;
-      var style = { radius: 9 + Math.min(14, Math.sqrt(q) * 3.2), color: "#fff", weight: 2, fillColor: COLORS[bandOf(p)], fillOpacity: 0.9 };
-      if (!markers[id]) { markers[id] = L.circleMarker(ll, style).bindPopup("", { maxWidth: 280 }).addTo(layer); }
+      var style = { radius: 9 + Math.min(14, Math.sqrt(q) * 3.2), color: "#fff", weight: 2, fillColor: COLORS[bandOf(p)], fillOpacity: 0.55 };
+      if (floor !== "all" && p.floor && p.floor !== floor) { return; }
+      if (!markers[id]) { markers[id] = L.circleMarker(ll, Object.assign({ pane: "touch" }, style)).bindPopup("", { maxWidth: 280 }).addTo(layer); }
       else { markers[id].setLatLng(ll).setStyle(style); if (!layer.hasLayer(markers[id])) layer.addLayer(markers[id]); }
       markers[id].setPopupContent(popup(p));
       bounds.push(ll);
     });
     Object.keys(markers).forEach(function (id) { if (!seen[id]) layer.removeLayer(markers[id]); });
-    if (!fitted && bounds.length) { map.fitBounds(bounds, { padding: [60, 60], maxZoom: 18 }); fitted = true; }
+    if (!fitted && bounds.length && !layoutBounds) { map.fitBounds(bounds, { padding: [60, 60], maxZoom: 18 }); fitted = true; }
 
     var rows = last.filter(function (f) { return !hidden[f.properties.touchpoint_type]; })
       .sort(function (a, b) { return (b.properties.queue_length || 0) - (a.properties.queue_length || 0) || a.properties.entity_id.localeCompare(b.properties.entity_id); });
@@ -209,7 +221,79 @@
       var dot = document.getElementById("dot"); dot.className = "dot err"; document.getElementById("statusText").textContent = "Viewer server not reachable";
     });
   }
+  // ---- terminal layout, floors and passenger tracking ----
+  var floor = "all", layoutBounds = null, layoutLayer = L.layerGroup().addTo(map), layoutData = null;
+  var ACT = { walking: "#2f6fde", queuing: "#f08c00", in_service: "#9c36b5", dwelling: "#0ca678", at_gate: "#495057", reclaim: "#e8590c" };
+  var ACT_LABEL = { walking: "Walking", queuing: "Queuing", in_service: "Being served", dwelling: "Dwelling (shops, seats)", at_gate: "At gate", reclaim: "Baggage reclaim" };
+  var paxRenderer = L.canvas({ pane: "pax", padding: 0.2 }), paxLayer = L.layerGroup().addTo(map), paxRows = [], paxFields = [];
+
+  function drawLayout() {
+    layoutLayer.clearLayers();
+    if (!layoutData) return;
+    var all = [];
+    layoutData.features.forEach(function (f) {
+      var pr = f.properties, building = pr.kind === "building";
+      if (!building && floor !== "all" && pr.floor !== floor) return;
+      var poly = L.geoJSON(f, { pane: "layout", style: building
+        ? { color: "#1c2430", weight: 2, fill: true, fillColor: "#ffffff", fillOpacity: 0.35 }
+        : { color: "#0b5cad", weight: 0.8, dashArray: "3 3", fillColor: "#0b5cad", fillOpacity: 0.04 } });
+      if (!building) poly.bindTooltip(esc(pr.name) + " (" + esc(pr.floor) + ")", { sticky: true });
+      poly.addTo(layoutLayer);
+      if (building) all.push(poly.getBounds());
+    });
+    if (!layoutBounds && all.length) {
+      layoutBounds = all.reduce(function (a, b) { return a.extend(b); }, L.latLngBounds(all[0].getSouthWest(), all[0].getNorthEast()));
+      map.fitBounds(layoutBounds, { padding: [30, 30] }); fitted = true;
+    }
+  }
+
+  function floorChips() {
+    var box = document.getElementById("floors"), opts = [["all", "All floors"]];
+    if (layoutData && layoutData.floors) Object.keys(layoutData.floors).sort().reverse().forEach(function (k) { opts.push([k, k + " " + layoutData.floors[k].name]); });
+    box.innerHTML = "";
+    opts.forEach(function (o) {
+      var b = document.createElement("button"); b.className = "chip"; b.textContent = o[1];
+      b.setAttribute("aria-pressed", String(floor === o[0]));
+      b.onclick = function () { floor = o[0]; floorChips(); drawLayout(); redraw(); drawPax(); };
+      box.appendChild(b);
+    });
+  }
+
+  function paxPopup(r) {
+    var p = {}; paxFields.forEach(function (k, i) { p[k] = r[i]; });
+    var rows = [["Journey", pretty(p.journey || "-")], ["Activity", ACT_LABEL[p.activity] || p.activity], ["Touchpoint", p.touchpoint_id ? nice(p.touchpoint_id) : "-"],
+      ["Flight", p.flight_id || "-"], ["Gate", p.gate_id ? nice(p.gate_id) : "-"], ["Zone", p.indoor_zone_id ? nice(p.indoor_zone_id) : "-"], ["Floor", p.floor]];
+    return '<div class="pop"><h3>' + esc(p.passenger_id) + '</h3><div class="meta">' + esc(p.latitude) + ", " + esc(p.longitude) + "</div><dl>" +
+      rows.map(function (x) { return "<dt>" + esc(x[0]) + "</dt><dd>" + esc(x[1]) + "</dd>"; }).join("") + "</dl></div>";
+  }
+
+  function drawPax() {
+    paxLayer.clearLayers();
+    var counts = {}, shown = 0, iF = paxFields.indexOf("floor"), iA = paxFields.indexOf("activity"),
+        iX = paxFields.indexOf("longitude"), iY = paxFields.indexOf("latitude");
+    paxRows.forEach(function (r) {
+      if (floor !== "all" && r[iF] !== floor) return;
+      counts[r[iA]] = (counts[r[iA]] || 0) + 1; shown++;
+      L.circleMarker([r[iY], r[iX]], { renderer: paxRenderer, pane: "pax", radius: 2.6, weight: 0, fillColor: ACT[r[iA]] || "#868e96", fillOpacity: 0.85 })
+        .on("click", function (e) { L.popup({ maxWidth: 260 }).setLatLng(e.latlng).setContent(paxPopup(r)).openOn(map); })
+        .addTo(paxLayer);
+    });
+    document.getElementById("sPax").textContent = shown.toLocaleString();
+    document.getElementById("paxLegend").innerHTML = Object.keys(ACT).map(function (k) {
+      return '<div><i style="background:' + ACT[k] + ';width:9px;height:9px"></i>' + ACT_LABEL[k] + ' <span class="sub">' + (counts[k] || 0) + "</span></div>";
+    }).join("");
+  }
+
+  function paxTick() {
+    fetch("api/positions", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (d) {
+      paxFields = d.fields; paxRows = d.rows; drawPax();
+      document.getElementById("paxCounts").textContent = d.event_time_epoch_ms ? "(" + new Date(d.event_time_epoch_ms).toISOString().slice(11, 19) + " UTC)" : "(waiting for the tracking feed)";
+    }).catch(function () {});
+  }
+
+  fetch("api/layout").then(function (r) { return r.ok ? r.json() : null; }).then(function (d) { layoutData = d; floorChips(); drawLayout(); }).catch(function () { floorChips(); });
   tick(); setInterval(tick, 2000);
+  paxTick(); setInterval(paxTick, 2000);
 })();
 </script>
 </body>

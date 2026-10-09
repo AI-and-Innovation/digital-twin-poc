@@ -11,8 +11,8 @@ Conventions (confirm against the Esri team's actual feed definition):
   * ``event_time_epoch_ms`` (UTC epoch milliseconds) is the time field, so no
     date-format string is needed; ISO-8601 strings are kept alongside;
   * ``longitude``/``latitude`` are WGS84 (EPSG:4326) and only present when a
-    location can be resolved. Indoor x/y are NOT converted, because
-    spatial.indoor_to_outdoor needs a calibrated transform that does not exist.
+    location can be resolved. Indoor x/y (passenger positions) are converted with
+    the terminal layout's local frame (config/terminal_layout.json).
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from .models import EventEnvelope
+from .spatial import LocalFrame, polygon_centroid
 
 ENVELOPE_FIELDS = (
     "event_id", "event_type", "schema_version", "airport_id", "terminal_id",
@@ -33,21 +34,45 @@ ENVELOPE_FIELDS = (
 
 
 class ZoneLocator:
-    """Maps zone_id -> WGS84 point using config/zone_locations.json."""
+    """Maps touchpoints, zones and indoor x/y to WGS84.
+
+    Reads either the terminal layout (config/terminal_layout.json: local-metre
+    positions plus a frame) or the older flat zone file (zone_id -> lon/lat).
+    """
 
     # Several touchpoints share one zone. Without a spread they would all draw as a
     # single dot, so each gets a small, repeatable offset around the zone point
     # (about 6-14 m). An explicit entry under "touchpoints" in the file wins.
     SPREAD_DEG = (0.00006, 0.00013)
 
-    def __init__(self, zones: dict[str, dict[str, Any]], touchpoints: dict[str, dict[str, Any]] | None = None):
+    def __init__(self, zones: dict[str, dict[str, Any]], touchpoints: dict[str, dict[str, Any]] | None = None,
+                 frame: LocalFrame | None = None):
         self.zones = zones
         self.touchpoints = touchpoints or {}
+        self.frame = frame
 
     @classmethod
     def from_file(cls, path: str | Path) -> "ZoneLocator":
         data = json.loads(Path(path).read_text(encoding="utf-8"))
+        if "frame" in data:
+            return cls.from_layout(data)
         return cls(data["zones"], data.get("touchpoints"))
+
+    @classmethod
+    def from_layout(cls, layout: dict[str, Any]) -> "ZoneLocator":
+        frame = LocalFrame.from_dict(layout["frame"])
+
+        def point(x: float, y: float, floor: str) -> dict[str, Any]:
+            lon, lat = frame.to_wgs84(x, y)
+            return {"longitude": lon, "latitude": lat, "floor": floor}
+
+        zones = {}
+        for zone in layout["zones"]:
+            largest = max(zone["polygons"], key=lambda p: abs(sum(
+                x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(p, p[1:] + p[:1]))))
+            zones[zone["zone_id"]] = point(*polygon_centroid(largest), zone["floor"])
+        touchpoints = {tp: point(t["x"], t["y"], t["floor"]) for tp, t in layout["touchpoints"].items()}
+        return cls(zones, touchpoints, frame)
 
     def locate(self, zone_id: str | None, entity_id: str | None = None) -> dict[str, Any] | None:
         if entity_id and entity_id in self.touchpoints:
@@ -101,6 +126,10 @@ def to_esri_record(event: EventEnvelope, locator: ZoneLocator | None = None) -> 
         lon, lat = flat["outdoor_lon"], flat["outdoor_lat"]
     elif "lat" in flat and "lon" in flat:
         lon, lat = flat["lon"], flat["lat"]
+    elif locator is not None and locator.frame is not None and "indoor_x" in flat and "indoor_y" in flat \
+            and flat.get("indoor_coordinate_frame_id") == locator.frame.frame_id:
+        lon, lat = locator.frame.to_wgs84(flat["indoor_x"], flat["indoor_y"])
+        floor = flat.get("indoor_floor")
     elif locator is not None:
         zone = locator.locate(flat.get("zone_id") or flat.get("indoor_zone_id"),
                               flat.get("touchpoint_id"))

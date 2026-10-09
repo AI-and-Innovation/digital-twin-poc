@@ -108,10 +108,10 @@ src/airport_eye/
   config.py                     Pydantic configuration and JSON loader
   cli.py, __main__.py            Validation commands and generate stub
   common.py                     Entity-key and nominal-load helpers
-  spatial.py                    Transform and route placeholders
+  spatial.py                    Local frame <-> WGS84, walkway graph, zone lookup
   generators/
     facility.py                 Registry/telemetry placeholder
-    passenger.py                Touchpoint, track and aggregate placeholder
+    passenger.py                Passenger tracking: flights, journeys, walking, connected queues
     passenger_touchpoint.py     Stateful touchpoint queue generator
     airport_operations.py       AODB/RMS/A-CDM placeholder
     aircraft.py                 Aircraft movement placeholder
@@ -256,9 +256,11 @@ python scripts/kafka_smoke_test.py --bootstrap localhost:9092 --format esri
 objects joined with `_`), `event_time_epoch_ms` as the time field, `entity_id`
 as the track ID, and `longitude`/`latitude` (WGS84) where a location resolves.
 Touchpoint events have no coordinates, so they are located through
-`config/zone_locations.json`. **Those coordinates are synthetic placeholders**
-around an approximate airport reference point, not surveyed positions. Indoor
-x/y are not converted to geographic coordinates (no calibrated transform yet).
+`config/terminal_layout.json`: the Terminal 1 outline and gates from
+OpenStreetMap, with a **schematic** interior (zones, touchpoints, walkways) drawn
+inside it. Passenger positions carry indoor x/y in terminal-local metres, which
+are converted to WGS84 with the layout's frame. See
+[docs/PASSENGER_TRACKING.md](docs/PASSENGER_TRACKING.md).
 
 Tested: unit tests with a fake producer, and a wire-level run against
 librdkafka's in-process mock broker (2,400 records, 0 failures). Not yet tested
@@ -268,7 +270,8 @@ against a real broker, nor against an actual ArcGIS Velocity/GeoEvent feed.
 
 `scripts/local_poc.sh setup` then `scripts/local_poc.sh demo` starts Kafka, a
 live per-minute publisher (`airport-eye stream`) and a local map
-(`scripts/map_viewer.py`). Scope is set in `config/passenger_touchpoint.json`
+(`scripts/map_viewer.py`), plus live passenger tracking (`airport-eye pax-stream`,
+every 5 s). Scope is set in `config/passenger_touchpoint.json`
 with `include_types` (entry, check-in, security, boarding, immigration). The
 full hand-off, field table and Esri connection notes are in
 [docs/ESRI_SETUP.md](docs/ESRI_SETUP.md).

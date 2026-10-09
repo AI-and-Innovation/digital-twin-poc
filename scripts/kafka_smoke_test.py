@@ -26,7 +26,7 @@ def main() -> int:
     ap.add_argument("--bootstrap", default="localhost:9092")
     ap.add_argument("--file", default="generated_data/passenger_touchpoint.jsonl")
     ap.add_argument("--config", default="config/poc.json")
-    ap.add_argument("--zones", default="config/zone_locations.json")
+    ap.add_argument("--zones", default="config/terminal_layout.json")
     ap.add_argument("--format", choices=["envelope", "esri"], default="esri")
     ap.add_argument("--count", type=int, default=200)
     args = ap.parse_args()
