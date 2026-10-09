@@ -1,0 +1,120 @@
+{
+  "_note": "SYNTHETIC PLACEHOLDER. Zone coordinates are an arbitrary grid laid out around an approximate RGIA airport reference point so Esri layers have something to draw. They are NOT surveyed positions. Replace with real zone centroids (or BIM/GIS-derived coordinates) before any demo that implies real locations.",
+  "crs": "EPSG:4326",
+  "reference_point": {
+    "lon": 78.4294,
+    "lat": 17.2403
+  },
+  "zones": {
+    "SYN-HYD-ZONE-ARRIVALS": {
+      "longitude": 78.4282,
+      "latitude": 17.2391,
+      "floor": "L0"
+    },
+    "SYN-HYD-ZONE-CHECKIN": {
+      "longitude": 78.4288,
+      "latitude": 17.2391,
+      "floor": "L0"
+    },
+    "SYN-HYD-ZONE-CITYSIDE": {
+      "longitude": 78.4294,
+      "latitude": 17.2391,
+      "floor": "L0"
+    },
+    "SYN-HYD-ZONE-DEPARTURES": {
+      "longitude": 78.43,
+      "latitude": 17.2391,
+      "floor": "L0"
+    },
+    "SYN-HYD-ZONE-DOM-ARRIVALS": {
+      "longitude": 78.4306,
+      "latitude": 17.2391,
+      "floor": "L0"
+    },
+    "SYN-HYD-ZONE-DOM-DEPARTURES": {
+      "longitude": 78.4282,
+      "latitude": 17.2397,
+      "floor": "L0"
+    },
+    "SYN-HYD-ZONE-DOM-TRANSFER": {
+      "longitude": 78.4288,
+      "latitude": 17.2397,
+      "floor": "L0"
+    },
+    "SYN-HYD-ZONE-GA": {
+      "longitude": 78.4294,
+      "latitude": 17.2397,
+      "floor": "L0"
+    },
+    "SYN-HYD-ZONE-INT-ARRIVALS": {
+      "longitude": 78.43,
+      "latitude": 17.2397,
+      "floor": "L0"
+    },
+    "SYN-HYD-ZONE-INT-DEPARTURES": {
+      "longitude": 78.4306,
+      "latitude": 17.2397,
+      "floor": "L0"
+    },
+    "SYN-HYD-ZONE-SECURITY": {
+      "longitude": 78.4282,
+      "latitude": 17.2403,
+      "floor": "L0"
+    },
+    "SYN-HYD-ZONE-SECURITY-DOM": {
+      "longitude": 78.4288,
+      "latitude": 17.2403,
+      "floor": "L0"
+    },
+    "SYN-HYD-ZONE-SECURITY-INT": {
+      "longitude": 78.4294,
+      "latitude": 17.2403,
+      "floor": "L0"
+    },
+    "SYN-HYD-ZONE-TO-CONFIRM": {
+      "longitude": 78.43,
+      "latitude": 17.2403,
+      "floor": "L0"
+    },
+    "SYN-HYD-ZONE-TRANSFER": {
+      "longitude": 78.4306,
+      "latitude": 17.2403,
+      "floor": "L0"
+    },
+    "SYN-HYD-ZONE-VID-01": {
+      "longitude": 78.4282,
+      "latitude": 17.2409,
+      "floor": "L0"
+    },
+    "SYN-HYD-ZONE-VID-02": {
+      "longitude": 78.4288,
+      "latitude": 17.2409,
+      "floor": "L0"
+    },
+    "SYN-HYD-ZONE-VID-03": {
+      "longitude": 78.4294,
+      "latitude": 17.2409,
+      "floor": "L0"
+    },
+    "SYN-HYD-ZONE-VID-04": {
+      "longitude": 78.43,
+      "latitude": 17.2409,
+      "floor": "L0"
+    },
+    "SYN-HYD-ZONE-VID-05": {
+      "longitude": 78.4306,
+      "latitude": 17.2409,
+      "floor": "L0"
+    },
+    "SYN-HYD-ZONE-VID-06": {
+      "longitude": 78.4282,
+      "latitude": 17.2415,
+      "floor": "L0"
+    },
+    "SYN-HYD-ZONE-VID-07": {
+      "longitude": 78.4288,
+      "latitude": 17.2415,
+      "floor": "L0"
+    }
+  }
+}

@@ -79,6 +79,24 @@ class PassengerTouchpoint(Model):
     processed_passengers: int = Field(ge=0, description="Services completed in (window_start, window_end]")
     avg_wait_time_seconds: float | None = Field(ge=0, description="Mean queue-entry to service-start duration for completed services")
     avg_processing_time_seconds: float | None = Field(ge=0, description="Mean service-start to completion duration for completed services")
+    # Optional queue-health attributes (see service_targets.py). All default to None so
+    # earlier records and samples stay valid.
+    throughput_since_midnight: int | None = Field(default=None, ge=0, description="Services completed from airport-local midnight to window_end")
+    service_day: str | None = Field(default=None, description="Airport-local date the since-midnight total refers to")
+    touchpoint_name: str | None = None
+    flow: str | None = None
+    service_channels: int | None = Field(default=None, ge=1)
+    utilization_pct: float | None = Field(default=None, ge=0)
+    throughput_per_hour: float | None = Field(default=None, ge=0)
+    estimated_wait_seconds: float | None = Field(default=None, ge=0)
+    p95_wait_seconds: float | None = Field(default=None, ge=0)
+    target_wait_seconds: float | None = Field(default=None, gt=0, description="Operational target (not an SLA)")
+    aera_existing_wait_seconds: float | None = Field(default=None, gt=0)
+    aera_proposed_wait_seconds: float | None = Field(default=None, gt=0, description="August 2025 consultation proposal, not enacted")
+    target_basis: Literal["recommended", "assumed_from_similar", "none"] | None = None
+    queue_limit: int | None = Field(default=None, ge=0, description="Queue length at which the operational wait target would be reached")
+    status: Literal["no_target", "normal", "busy", "congested"] | None = None
+    sla_breached: bool | None = None
 
     @model_validator(mode="after")
     def valid_metrics(self):

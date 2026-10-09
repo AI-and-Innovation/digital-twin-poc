@@ -12,12 +12,14 @@ import random
 from collections import deque
 from collections.abc import Iterator
 from datetime import timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from uuid import NAMESPACE_URL, uuid5
 
 from ..models import EventEnvelope, PassengerTouchpoint
-from ..touchpoint_config import Touchpoint, TouchpointInventory, TouchpointRunConfig, load_run
+from ..service_targets import ServiceTargets, queue_attributes
+from ..touchpoint_config import Touchpoint, TouchpointInventory, TouchpointRunConfig, load_run, load_targets
 
 
 class QueueState:
@@ -30,6 +32,7 @@ class QueueState:
         self.serving: list[tuple[float, float, float]] = []
         self.arrivals = 0
         self.completed = 0
+        self._waits: deque[tuple[float, float]] = deque()  # (service start time, wait) for rolling p95
         self.next_arrival = self._arrival_delay()
         self._start_services(0.0)
 
@@ -53,6 +56,7 @@ class QueueState:
                 break
             if departure <= self.next_arrival:
                 now, wait, service = heapq.heappop(self.serving)
+                self._waits.append((now, wait))
                 count += 1
                 self.completed += 1
                 wait_sum += wait
@@ -68,10 +72,27 @@ class QueueState:
                 round(service_sum / count, 3) if count else None)
 
 
-def generate(config: TouchpointRunConfig, inventory: TouchpointInventory) -> Iterator[EventEnvelope]:
+def _recent_waits(state: QueueState, cutoff: float, window_seconds: float) -> list[float]:
+    while state._waits and state._waits[0][0] < cutoff - window_seconds:
+        state._waits.popleft()
+    return [wait for _, wait in state._waits]
+
+
+def active_touchpoints(config: TouchpointRunConfig, inventory: TouchpointInventory) -> list[Touchpoint]:
+    wanted = set(config.include_types) if config.include_types is not None else None
+    chosen = sorted((tp for tp in inventory.touchpoints
+                     if tp.enabled and (wanted is None or tp.touchpoint_type in wanted)),
+                    key=lambda tp: tp.touchpoint_id)
+    if not chosen:
+        raise ValueError(f"No enabled touchpoints match include_types={config.include_types}")
+    return chosen
+
+
+def generate(config: TouchpointRunConfig, inventory: TouchpointInventory,
+             targets: ServiceTargets | None = None) -> Iterator[EventEnvelope]:
     start = config.start_time.astimezone(timezone.utc)
     end = config.end_time.astimezone(timezone.utc)
-    touchpoints = sorted((tp for tp in inventory.touchpoints if tp.enabled), key=lambda tp: tp.touchpoint_id)
+    touchpoints = active_touchpoints(config, inventory)
     states = {tp.touchpoint_id: QueueState(tp, config.seed) for tp in touchpoints}
     fingerprints = {
         tp.touchpoint_id: hashlib.sha256(json.dumps({
@@ -82,18 +103,39 @@ def generate(config: TouchpointRunConfig, inventory: TouchpointInventory) -> Ite
         for tp in touchpoints
     }
     windows = int((end - start).total_seconds() / config.interval_seconds)
+    # The queues run from airport-local midnight so "total throughput since midnight" is
+    # consistent however late in the day the output starts. Windows before ``start`` are
+    # simulated but not emitted.
+    local = ZoneInfo(config.timezone)
+    midnight = start.astimezone(local).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    offset = (start - midnight).total_seconds()
+    since_midnight = {tp.touchpoint_id: states[tp.touchpoint_id].advance(offset)[0] if offset else 0
+                      for tp in touchpoints}
+    day = start.astimezone(local).date()
     for sequence in range(windows):
-        cutoff = (sequence + 1) * config.interval_seconds
-        window_end = start + timedelta(seconds=cutoff)
+        cutoff = offset + (sequence + 1) * config.interval_seconds
+        window_end = start + timedelta(seconds=(sequence + 1) * config.interval_seconds)
+        window_day = (window_end - timedelta(seconds=config.interval_seconds)).astimezone(local).date()
+        if window_day != day:  # a new local day began: totals restart
+            day = window_day
+            since_midnight = {key: 0 for key in since_midnight}
         for tp in touchpoints:
             state = states[tp.touchpoint_id]
             count, wait, service = state.advance(cutoff)
+            since_midnight[tp.touchpoint_id] += count
+            extra = {}
+            if targets is not None:
+                extra = queue_attributes(
+                    targets, tp, queue_length=len(state.waiting), in_service=len(state.serving),
+                    processed=count, interval_seconds=config.interval_seconds,
+                    recent_waits=_recent_waits(state, cutoff, targets.p95_window_minutes * 60))
             payload = PassengerTouchpoint(
                 touchpoint_id=tp.touchpoint_id, touchpoint_type=tp.touchpoint_type,
                 zone_id=tp.zone_id, window_start=window_end - timedelta(seconds=config.interval_seconds),
                 window_end=window_end, queue_length=len(state.waiting),
                 passengers_in_service=len(state.serving), processed_passengers=count,
                 avg_wait_time_seconds=wait, avg_processing_time_seconds=service,
+                throughput_since_midnight=since_midnight[tp.touchpoint_id], service_day=day.isoformat(), **extra,
             )
             yield EventEnvelope(
                 event_id=uuid5(NAMESPACE_URL, f"airport-eye:{fingerprints[tp.touchpoint_id]}:{sequence}"),
@@ -107,6 +149,7 @@ def generate(config: TouchpointRunConfig, inventory: TouchpointInventory) -> Ite
 
 def write_dataset(config_path: str | Path) -> tuple[Path, int]:
     config, inventory, output = load_run(config_path)
+    targets = load_targets(config_path, config)
     output.mkdir(parents=True, exist_ok=True)
     destination = output / "passenger_touchpoint.jsonl"
     count = 0
@@ -116,7 +159,7 @@ def write_dataset(config_path: str | Path) -> tuple[Path, int]:
         with NamedTemporaryFile(mode="w", encoding="utf-8", newline="\n", dir=output,
                                 prefix=".passenger_touchpoint-", suffix=".tmp", delete=False) as handle:
             temporary = Path(handle.name)
-            for event in generate(config, inventory):
+            for event in generate(config, inventory, targets):
                 handle.write(event.model_dump_json() + "\n")
                 count += 1
         temporary.replace(destination)

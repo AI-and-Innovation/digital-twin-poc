@@ -103,7 +103,7 @@ class ContractTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             type(config).model_validate(raw)
 
-    def test_kafka_record_and_transport_stub(self):
+    def test_kafka_record_preparation(self):
         config = load_config(ROOT / "config/poc.json")
         publisher = KafkaPublisher(config.kafka)
         event = EventEnvelope.model_validate(sample("passenger_position"))
@@ -111,8 +111,7 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(topic, "airport-eye.poc.passenger.position")
         self.assertEqual(key, b"SYN-AIRPORT-001:SYN-PAX-000001")
         self.assertEqual(EventEnvelope.model_validate_json(value), event)
-        with self.assertRaises(NotImplementedError):
-            publisher.publish(event)
+        # transport is covered in test_kafka_publisher.py
 
     def test_cli_validation_and_generate_stub(self):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):

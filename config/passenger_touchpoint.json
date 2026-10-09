@@ -4,5 +4,13 @@
   "interval_seconds": 60,
   "seed": 42,
   "inventory_file": "hyderabad_touchpoints.json",
-  "output_directory": "../generated_data"
+  "output_directory": "../generated_data",
+  "include_types": [
+    "entry",
+    "check_in",
+    "security",
+    "boarding",
+    "immigration"
+  ],
+  "service_targets_file": "service_targets.json"
 }

@@ -66,7 +66,9 @@ class TouchpointTests(unittest.TestCase):
 
     def test_count_cadence_keys_and_reproducibility(self):
         events = list(generate(self.config, self.inventory))
-        enabled = [tp for tp in self.inventory.touchpoints if tp.enabled]
+        wanted = set(self.config.include_types or [])
+        enabled = [tp for tp in self.inventory.touchpoints
+                   if tp.enabled and (not wanted or tp.touchpoint_type in wanted)]
         self.assertEqual(len(events), 60 * len(enabled))
         self.assertEqual(len({e.event_id for e in events}), len(events))
         self.assertEqual([e.model_dump_json() for e in events],
@@ -82,7 +84,7 @@ class TouchpointTests(unittest.TestCase):
         self.assertEqual({e.entity_id for e in events}, {tp.touchpoint_id for tp in enabled})
 
     def test_editable_inventory_and_interval(self):
-        config = self.config.model_copy(update={'interval_seconds': 120})
+        config = self.config.model_copy(update={'interval_seconds': 120, 'include_types': None})
         inventory = self.inventory.model_copy(deep=True)
         original = list(generate(config, inventory))
         inventory.touchpoints.reverse()
@@ -95,6 +97,16 @@ class TouchpointTests(unittest.TestCase):
                          [e for e in events if e.entity_id == self.tp.touchpoint_id])
         inventory.touchpoints = [added]
         self.assertEqual(len(list(generate(config, inventory))), 30)
+
+    def test_scope_filter_limits_types(self):
+        events = list(generate(self.config, self.inventory))
+        self.assertEqual({e.payload['touchpoint_type'] for e in events},
+                         {'entry', 'check_in', 'security', 'boarding', 'immigration'})
+        self.assertEqual(len({e.entity_id for e in events}), 16)
+        unfiltered = list(generate(self.config.model_copy(update={'include_types': None}), self.inventory))
+        self.assertGreater(len({e.entity_id for e in unfiltered}), 16)
+        with self.assertRaises(ValueError):
+            list(generate(self.config.model_copy(update={'include_types': ['nope']}), self.inventory))
 
     def test_invalid_configuration_and_catalog(self):
         for changes in [{'interval_seconds': 0}, {'interval_seconds': 61},
@@ -117,7 +129,7 @@ class TouchpointTests(unittest.TestCase):
             self.assertTrue(root.resolve().is_relative_to(ROOT.resolve()))
             inventory = self.inventory.model_copy(update={'touchpoints': [self.tp]})
             (root / 'inventory.json').write_text(inventory.model_dump_json(), encoding='utf-8')
-            config = self.config.model_copy(update={'inventory_file': 'inventory.json', 'output_directory': 'generated_data'})
+            config = self.config.model_copy(update={'inventory_file': 'inventory.json', 'output_directory': 'generated_data', 'service_targets_file': None})
             path = root / 'run.json'
             path.write_text(config.model_dump_json(), encoding='utf-8')
             with contextlib.redirect_stdout(io.StringIO()):

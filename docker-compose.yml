@@ -1,10 +1,11 @@
-# Development placeholder only. Select and pin a tested Kafka image before use.
+# Local single-node Kafka (KRaft, no ZooKeeper) for the POC. Not for production.
+# Image tag defaults to 3.9.1; override with KAFKA_IMAGE_TAG.
 # Start explicitly with: docker compose --profile kafka up -d
 # Host clients use localhost:9092; containers use kafka:29092.
 services:
   kafka:
     profiles: ["kafka"]
-    image: apache/kafka:${KAFKA_IMAGE_TAG:?Set KAFKA_IMAGE_TAG to a tested pinned release}
+    image: apache/kafka:${KAFKA_IMAGE_TAG:-3.9.1}
     ports:
       - "127.0.0.1:9092:9092"
     environment:
@@ -19,3 +20,21 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 10s
+
+  # Browser UI for topics and messages: http://127.0.0.1:8081
+  # Start with: docker compose --profile kafka-ui up -d
+  kafka-ui:
+    profiles: ["kafka-ui"]
+    image: ghcr.io/kafbat/kafka-ui:${KAFKA_UI_IMAGE_TAG:-latest}
+    ports:
+      - "127.0.0.1:8081:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: airport-eye-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      DYNAMIC_CONFIG_ENABLED: "false"

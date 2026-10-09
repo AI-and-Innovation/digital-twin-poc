@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AirportEye - local Esri feed viewer</title>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --ink: #1c2430; --muted: #667085; --line: #e3e7ee;
+    --accent: #0b5cad; --ok: #2e9e5b; --warn: #e3a008; --bad: #d33f3f; --idle: #98a2b3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #11161d; --panel: #1a212b; --ink: #e8edf4; --muted: #9aa6b6; --line: #2a3340; --accent: #5aa6f0; }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--ink); display: flex; }
+  aside { width: 380px; max-width: 42vw; background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-width: 300px; }
+  header { padding: 16px 16px 12px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 16px; margin: 0 0 2px; }
+  .sub { color: var(--muted); font-size: 12px; }
+  .status { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--idle); flex: none; }
+  .dot.live { background: var(--ok); box-shadow: 0 0 0 3px rgba(46,158,91,.2); }
+  .dot.stale { background: var(--warn); }
+  .dot.err { background: var(--bad); }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+  .stat { background: var(--bg); border-radius: 8px; padding: 8px 10px; }
+  .stat b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--muted); font-size: 11px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+  .chip { border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
+  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .list { overflow: auto; flex: 1; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 11px; color: var(--muted); font-weight: 600; padding: 8px 16px 6px; position: sticky; top: 0; background: var(--panel); }
+  td { padding: 7px 16px; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  tr.row { cursor: pointer; }
+  tr.row:hover td { background: var(--bg); }
+  td.num, th.num { text-align: right; }
+  .name { font-weight: 500; }
+  .type { color: var(--muted); font-size: 11px; }
+  .pill { display: inline-block; min-width: 28px; text-align: center; padding: 1px 8px; border-radius: 999px; color: #fff; font-weight: 600; }
+  main { flex: 1; position: relative; min-width: 0; }
+  #map { position: absolute; inset: 0; background: #dfe5ec; }
+  .legend { position: absolute; z-index: 500; right: 12px; bottom: 28px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 12px; }
+  .legend div { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+  .legend i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+  .banner { position: absolute; z-index: 500; left: 50%; top: 12px; transform: translateX(-50%); background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+  .leaflet-popup-content { margin: 12px 14px; font: 13px/1.4 system-ui, sans-serif; }
+  .pop h3 { margin: 0 0 2px; font-size: 14px; }
+  .pop .meta { color: #667085; font-size: 11px; margin-bottom: 8px; }
+  .pop dl { display: grid; grid-template-columns: auto auto; gap: 2px 14px; margin: 0; }
+  .pop dt { color: #667085; } .pop dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+  @media (max-width: 760px) { body { flex-direction: column-reverse; } aside { width: 100%; max-width: none; height: 45vh; border-right: 0; border-top: 1px solid var(--line); } main { height: 55vh; flex: none; } }
+</style>
+</head>
+<body>
+<aside>
+  <header>
+    <h1>AirportEye - touchpoint queues</h1>
+    <div class="sub">Local view of the Esri feed (flat JSON on Kafka). Not an Esri product.</div>
+    <div class="status"><span class="dot" id="dot"></span><span id="statusText">Connecting...</span></div>
+    <div class="stats">
+      <div class="stat"><b id="sTouch">0</b><span>touchpoints</span></div>
+      <div class="stat"><b id="sMsgs">0</b><span>records received</span></div>
+      <div class="stat"><b id="sQueue">0</b><span>people queuing</span></div>
+    </div>
+  </header>
+  <div class="chips" id="chips"></div>
+  <div class="list">
+    <table>
+      <thead><tr><th>Touchpoint</th><th class="num">Queue</th><th class="num">Est. wait</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</aside>
+<main>
+  <div id="map"></div>
+  <div class="banner" id="banner" hidden></div>
+  <div class="legend">
+    <div><i style="background:var(--ok)"></i>Normal (under 60% of wait target)</div>
+    <div><i style="background:var(--warn)"></i>Busy (60-100%)</div>
+    <div><i style="background:var(--bad)"></i>Congested (target breached)</div>
+    <div><i style="background:#8a94a6"></i>No wait target set</div>
+    <div class="sub" style="color:var(--muted)">Locations are synthetic placeholders</div>
+  </div>
+</main>
+<script src="vendor/leaflet/leaflet.js"></script>
+<script>
+(function () {
+  var COLORS = { ok: "#2e9e5b", warn: "#e3a008", bad: "#d33f3f", none: "#8a94a6" };
+  // Colour by the record's status when the feed has one (queue health against the wait target);
+  // otherwise fall back to raw queue length.
+  function bandOf(p) {
+    if (p.status) return { normal: "ok", busy: "warn", congested: "bad", no_target: "none" }[p.status] || "none";
+    var q = p.queue_length || 0; return q <= 2 ? "ok" : q <= 7 ? "warn" : "bad";
+  }
+  function secs(v) { return v === null || v === undefined ? "-" : (v >= 120 ? (v / 60).toFixed(1) + " min" : Math.round(v) + " s"); }
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function pretty(t) { return String(t).replace(/_/g, " "); }
+  function nice(id) { return id.replace(/^SYN-HYD-/, ""); }
+
+  var map = L.map("map", { zoomControl: true }).setView([17.2394, 78.4294], 17);
+  var tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: "&copy; OpenStreetMap contributors"
+  }).addTo(map);
+  var tileErrors = 0;
+  tiles.on("tileerror", function () { tileErrors++; if (tileErrors === 3) showBanner("Base map tiles need internet. Points still plot without them.", 8000); });
+
+  var layer = L.layerGroup().addTo(map);
+  var markers = {}, byId = {}, hidden = {}, fitted = false;
+
+  function showBanner(text, ms) {
+    var b = document.getElementById("banner"); b.textContent = text; b.hidden = false;
+    if (ms) setTimeout(function () { b.hidden = true; }, ms);
+  }
+
+  function spark(hist) {
+    var pts = hist.filter(function (h) { return h[1] !== null; });
+    if (pts.length < 2) return "";
+    var max = Math.max.apply(null, pts.map(function (h) { return h[1]; })) || 1, w = 200, h = 34;
+    var d = pts.map(function (p, i) { return (i ? "L" : "M") + (i * w / (pts.length - 1)).toFixed(1) + " " + (h - 2 - p[1] / max * (h - 6)).toFixed(1); }).join(" ");
+    return '<svg width="' + w + '" height="' + h + '" style="margin-top:8px"><path d="' + d + '" fill="none" stroke="#0b5cad" stroke-width="1.6"/></svg><div class="meta">queue length, last ' + pts.length + ' min</div>';
+  }
+
+  function popup(p) {
+    var rows = [["Queue length", p.queue_length + (p.queue_limit !== null && p.queue_limit !== undefined ? " (limit " + p.queue_limit + ")" : "")],
+      ["In service", p.passengers_in_service + (p.service_channels ? " of " + p.service_channels : "")],
+      ["Utilization", p.utilization_pct === undefined || p.utilization_pct === null ? "-" : p.utilization_pct + "%"],
+      ["Processed (last min)", p.processed_passengers],
+      ["Served since midnight", p.throughput_since_midnight === undefined || p.throughput_since_midnight === null ? "-" : p.throughput_since_midnight.toLocaleString()],
+      ["Estimated wait", secs(p.estimated_wait_seconds)], ["95th pct wait (30 min)", secs(p.p95_wait_seconds)],
+      ["Operational target", secs(p.target_wait_seconds)], ["AERA existing / proposed", secs(p.aera_existing_wait_seconds) + " / " + secs(p.aera_proposed_wait_seconds)],
+      ["Status", p.status ? p.status.replace("_", " ") + (p.sla_breached ? " - target breached" : "") : "-"],
+      ["Avg wait / service", secs(p.avg_wait_time_seconds) + " / " + secs(p.avg_processing_time_seconds)],
+      ["Zone", nice(p.zone_id)], ["Time (UTC)", String(p.event_time).replace("T", " ").replace("Z", "")]];
+    return '<div class="pop"><h3>' + esc(p.touchpoint_name || nice(p.entity_id)) + '</h3><div class="meta">' + esc(pretty(p.touchpoint_type)) + (p.flow ? " / " + esc(p.flow) : "") + " - " + esc(p.latitude) + ", " + esc(p.longitude) + "</div><dl>" +
+      rows.map(function (r) { return "<dt>" + esc(r[0]) + "</dt><dd>" + esc(r[1]) + "</dd>"; }).join("") + "</dl>" + spark(p.history || []) + "</div>";
+  }
+
+  function render(state) {
+    var feats = state.features, st = state.stats, total = 0, types = {};
+    byId = {};
+    feats.forEach(function (f) { var p = f.properties; byId[p.entity_id] = f; types[p.touchpoint_type] = (types[p.touchpoint_type] || 0) + 1; });
+
+    // chips
+    var chips = document.getElementById("chips");
+    Object.keys(types).sort().forEach(function (t) {
+      var id = "chip-" + t, el = document.getElementById(id);
+      if (!el) {
+        el = document.createElement("button"); el.className = "chip"; el.id = id; el.setAttribute("aria-pressed", "true");
+        el.onclick = function () { hidden[t] = !hidden[t]; el.setAttribute("aria-pressed", String(!hidden[t])); redraw(); };
+        chips.appendChild(el);
+      }
+      el.textContent = pretty(t) + " (" + types[t] + ")";
+    });
+    last = feats; redraw();
+    var visible = feats.filter(function (f) { return !hidden[f.properties.touchpoint_type]; });
+    visible.forEach(function (f) { total += f.properties.queue_length || 0; });
+    document.getElementById("sTouch").textContent = visible.length;
+    document.getElementById("sMsgs").textContent = st.received;
+    document.getElementById("sQueue").textContent = total;
+
+    var dot = document.getElementById("dot"), txt = document.getElementById("statusText");
+    if (st.error) { dot.className = "dot err"; txt.textContent = st.error; }
+    else if (st.received === 0) { dot.className = "dot"; txt.textContent = "Waiting for records from " + st.source; }
+    else if (st.seconds_since_last > 150) { dot.className = "dot stale"; txt.textContent = "No new records for " + Math.round(st.seconds_since_last) + "s - " + st.source; }
+    else { dot.className = "dot live"; txt.textContent = "Live - " + st.source; }
+  }
+
+  var last = [];
+  function redraw() {
+    var seen = {}, bounds = [];
+    last.forEach(function (f) {
+      var p = f.properties, id = p.entity_id;
+      if (hidden[p.touchpoint_type]) return;
+      seen[id] = true;
+      var ll = [f.geometry.coordinates[1], f.geometry.coordinates[0]], q = p.queue_length || 0;
+      var style = { radius: 9 + Math.min(14, Math.sqrt(q) * 3.2), color: "#fff", weight: 2, fillColor: COLORS[bandOf(p)], fillOpacity: 0.9 };
+      if (!markers[id]) { markers[id] = L.circleMarker(ll, style).bindPopup("", { maxWidth: 280 }).addTo(layer); }
+      else { markers[id].setLatLng(ll).setStyle(style); if (!layer.hasLayer(markers[id])) layer.addLayer(markers[id]); }
+      markers[id].setPopupContent(popup(p));
+      bounds.push(ll);
+    });
+    Object.keys(markers).forEach(function (id) { if (!seen[id]) layer.removeLayer(markers[id]); });
+    if (!fitted && bounds.length) { map.fitBounds(bounds, { padding: [60, 60], maxZoom: 18 }); fitted = true; }
+
+    var rows = last.filter(function (f) { return !hidden[f.properties.touchpoint_type]; })
+      .sort(function (a, b) { return (b.properties.queue_length || 0) - (a.properties.queue_length || 0) || a.properties.entity_id.localeCompare(b.properties.entity_id); });
+    var tb = document.getElementById("rows");
+    tb.innerHTML = rows.map(function (f) {
+      var p = f.properties, q = p.queue_length || 0;
+      return '<tr class="row" data-id="' + esc(p.entity_id) + '"><td><div class="name">' + esc(p.touchpoint_name || nice(p.entity_id)) + '</div><div class="type">' + esc(pretty(p.touchpoint_type)) +
+        '</div></td><td class="num"><span class="pill" style="background:' + COLORS[bandOf(p)] + '">' + q + '</span></td><td class="num">' +
+        secs(p.estimated_wait_seconds === undefined ? p.avg_wait_time_seconds : p.estimated_wait_seconds) + "</td></tr>";
+    }).join("");
+  }
+
+  document.getElementById("rows").addEventListener("click", function (e) {
+    var tr = e.target.closest("tr.row"); if (!tr) return;
+    var m = markers[tr.getAttribute("data-id")]; if (!m) return;
+    map.flyTo(m.getLatLng(), Math.max(map.getZoom(), 18), { duration: 0.6 }); m.openPopup();
+  });
+
+  function tick() {
+    fetch("api/state", { cache: "no-store" }).then(function (r) { return r.json(); }).then(render).catch(function () {
+      var dot = document.getElementById("dot"); dot.className = "dot err"; document.getElementById("statusText").textContent = "Viewer server not reachable";
+    });
+  }
+  tick(); setInterval(tick, 2000);
+})();
+</script>
+</body>
+</html>

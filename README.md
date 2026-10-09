@@ -219,19 +219,56 @@ This groups each entity within a topic partition. It does not provide ordering
 across passenger touchpoint/position topics or across flight and aircraft topics.
 Keep partition counts stable if consumers depend on partition ordering.
 
-`publish()` and `flush()` raise `NotImplementedError`. The optional `[kafka]`
-dependency is reserved for implementation. Credentials from `.env.example` are
-not loaded yet. Future work should include a shared seeded scheduler, bounded
-streaming batches, producer backpressure, delivery callbacks, retries, explicit
-topic provisioning, graceful flush and rate/latency/drop metrics. Kafka
-idempotence is a producer setting, not an end-to-end exactly-once guarantee.
+Publishing is implemented (see the section at the end). Kafka idempotence is a
+producer setting, not an end-to-end exactly-once guarantee. Still future work:
+a shared seeded scheduler across all streams, rate/latency/drop metrics, and
+production TLS/SASL operations.
 
-Docker Compose is an untested single-node KRaft development placeholder, with a
-`kafka` profile and host-local port binding. Set `KAFKA_IMAGE_TAG` to a tested
-pinned Apache Kafka release before `docker compose --profile kafka up -d`.
-The required variable can also be needed for Compose config parsing even when
-the profile is disabled. No broker is started by Python or validation tests.
-TLS/SASL, persistence, resilience and production operations are future work.
+Docker Compose is a single-node KRaft broker for local use, with a `kafka`
+profile, host-local port binding and a health check. `KAFKA_IMAGE_TAG` defaults
+to 3.9.1. Start it with `docker compose --profile kafka up -d --wait kafka`, or
+let `scripts/local_poc.sh` do it. No broker is started by Python or tests.
 
 Contract tests run now. Explicitly skipped simulation/transport tests mark later
 acceptance work; their skips must not be interpreted as successful load tests.
+
+## Publishing to Kafka and the Esri feed format
+
+`KafkaPublisher` now sends records (install the extra: `pip install -e ".[kafka]"`).
+It creates the producer lazily, retries when the local queue is full, counts
+delivery callbacks, and `flush()` raises if anything is undelivered or failed.
+Broker settings come from `config/poc.json`; `KAFKA_BOOTSTRAP_SERVERS`,
+`KAFKA_SECURITY_PROTOCOL` and `KAFKA_SASL_*` environment variables override them.
+
+```bash
+# inspect what would be sent (no network)
+airport-eye publish generated_data/passenger_touchpoint.jsonl --format esri --dry-run --limit 3
+# send to a broker
+airport-eye publish generated_data/passenger_touchpoint.jsonl --bootstrap localhost:9092
+airport-eye publish generated_data/passenger_touchpoint.jsonl --bootstrap localhost:9092 --format esri
+# end-to-end check against a real broker (publishes, then consumes back)
+python scripts/kafka_smoke_test.py --bootstrap localhost:9092 --format esri
+```
+
+`--format envelope` (default) keeps the canonical nested contract on
+`<prefix>.<event_type>`. `--format esri` sends a flat record on
+`<prefix>.esri.<event_type>`: payload fields hoisted to the top level (nested
+objects joined with `_`), `event_time_epoch_ms` as the time field, `entity_id`
+as the track ID, and `longitude`/`latitude` (WGS84) where a location resolves.
+Touchpoint events have no coordinates, so they are located through
+`config/zone_locations.json`. **Those coordinates are synthetic placeholders**
+around an approximate airport reference point, not surveyed positions. Indoor
+x/y are not converted to geographic coordinates (no calibrated transform yet).
+
+Tested: unit tests with a fake producer, and a wire-level run against
+librdkafka's in-process mock broker (2,400 records, 0 failures). Not yet tested
+against a real broker, nor against an actual ArcGIS Velocity/GeoEvent feed.
+
+## Local end-to-end run for the Esri POC
+
+`scripts/local_poc.sh setup` then `scripts/local_poc.sh demo` starts Kafka, a
+live per-minute publisher (`airport-eye stream`) and a local map
+(`scripts/map_viewer.py`). Scope is set in `config/passenger_touchpoint.json`
+with `include_types` (entry, check-in, security, boarding, immigration). The
+full hand-off, field table and Esri connection notes are in
+[docs/ESRI_SETUP.md](docs/ESRI_SETUP.md).
