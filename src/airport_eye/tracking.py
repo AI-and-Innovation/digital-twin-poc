@@ -93,7 +93,7 @@ def _window(config, start: datetime | None, minutes: float | None, live: bool) -
 
 def run_tracking_stream(config_path: str | Path, publisher: Any, *, minutes: float | None = None,
                         speed: float = 1.0, start: datetime | None = None, create_topics: bool = True,
-                        scenario: str | None = None,
+                        scenario: str | None = None, interval: int | None = None,
                         clock: Callable[[], float] = time.time, sleep: Callable[[float], None] = time.sleep,
                         log: Callable[[str], None] = print) -> dict[str, int]:
     """Publish one batch per interval, in real time (``speed`` compresses time).
@@ -104,6 +104,12 @@ def run_tracking_stream(config_path: str | Path, publisher: Any, *, minutes: flo
     if speed <= 0:
         raise ValueError("speed must be > 0")
     config, layout, inventory, _ = load_tracking(config_path, scenario)
+    if interval:
+        if interval <= 0 or 60 % interval:
+            raise ValueError("interval must divide 60 (5, 10, 15, 20, 30 or 60 seconds)")
+        targets = config._targets
+        config = config.model_copy(update={"interval_seconds": interval})
+        config._targets = targets
     if scenario:
         log(f"Scenario: {scenario} - {config.scenarios[scenario].description}")
     begin, end = _window(config, start, minutes, live=True)

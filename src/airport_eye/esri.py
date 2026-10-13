@@ -13,7 +13,12 @@ Conventions (confirm against the Esri team's actual feed definition):
   * ``longitude``/``latitude`` are WGS84 (EPSG:4326) and only present when a
     location can be resolved. Indoor x/y (passenger positions) are converted with
     the terminal layout's local frame (config/terminal_layout.json);
-  * ``elevation_m`` is the floor's height above the terminal ground floor (Z for 3D).
+  * ``elevation_m`` is the floor's height above the terminal ground floor (local Z);
+  * ``reference_elevation_m`` is the surveyed (or POC) height of L0 / the local
+    origin above the vertical datum; ``global_elevation_m`` =
+    ``reference_elevation_m`` + ``elevation_m`` (absolute Z for a global 3D scene);
+  * ``web_mercator_x`` / ``web_mercator_y`` are the same point in EPSG:3857
+    (``spatial_reference_wkid`` = 3857).
 """
 
 from __future__ import annotations
@@ -26,7 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from .models import EventEnvelope
-from .spatial import LocalFrame, polygon_centroid
+from .spatial import LocalFrame, polygon_centroid, to_web_mercator
 
 ENVELOPE_FIELDS = (
     "event_id", "event_type", "schema_version", "airport_id", "terminal_id",
@@ -47,18 +52,24 @@ class ZoneLocator:
     SPREAD_DEG = (0.00006, 0.00013)
 
     def __init__(self, zones: dict[str, dict[str, Any]], touchpoints: dict[str, dict[str, Any]] | None = None,
-                 frame: LocalFrame | None = None, floor_heights: dict[str, float] | None = None):
+                 frame: LocalFrame | None = None, floor_heights: dict[str, float] | None = None,
+                 reference_elevation_m: float | None = None):
         self.zones = zones
         self.touchpoints = touchpoints or {}
         self.frame = frame
         self.floor_heights = floor_heights or {}  # floor -> metres above the ground floor
+        # Prefer an explicit value; otherwise take it from the layout frame.
+        self.reference_elevation_m = (
+            reference_elevation_m if reference_elevation_m is not None
+            else (frame.reference_elevation_m if frame is not None else None))
 
     @classmethod
     def from_file(cls, path: str | Path) -> "ZoneLocator":
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         if "frame" in data:
             return cls.from_layout(data)
-        return cls(data["zones"], data.get("touchpoints"))
+        return cls(data["zones"], data.get("touchpoints"),
+                   reference_elevation_m=data.get("reference_elevation_m"))
 
     @classmethod
     def from_layout(cls, layout: dict[str, Any]) -> "ZoneLocator":
@@ -75,7 +86,7 @@ class ZoneLocator:
             zones[zone["zone_id"]] = point(*polygon_centroid(largest), zone["floor"])
         touchpoints = {tp: point(t["x"], t["y"], t["floor"]) for tp, t in layout["touchpoints"].items()}
         heights = {name: f["z"] for name, f in layout.get("floors", {}).items()}
-        return cls(zones, touchpoints, frame, heights)
+        return cls(zones, touchpoints, frame, heights, frame.reference_elevation_m)
 
     def locate(self, zone_id: str | None, entity_id: str | None = None) -> dict[str, Any] | None:
         if entity_id and entity_id in self.touchpoints:
@@ -143,7 +154,18 @@ def to_esri_record(event: EventEnvelope, locator: ZoneLocator | None = None) -> 
         record["latitude"] = lat
         if floor is not None and "floor" not in record:
             record["floor"] = floor
-        # Height above the terminal's ground floor, for 3D scenes (Z in ArcGIS).
+        # Height above the terminal's ground floor (local Z).
         if locator is not None and record.get("floor") in locator.floor_heights:
             record["elevation_m"] = locator.floor_heights[record["floor"]]
+        local_z = record.get("elevation_m")
+        if local_z is None:
+            local_z = flat.get("indoor_z")
+        # Absolute Z for a global / Web Mercator scene: REFERENCE_Z + local floor height.
+        if locator is not None and locator.reference_elevation_m is not None and local_z is not None:
+            record["reference_elevation_m"] = locator.reference_elevation_m
+            record["global_elevation_m"] = round(locator.reference_elevation_m + float(local_z), 3)
+        mx, my = to_web_mercator(float(lon), float(lat))
+        record["web_mercator_x"] = mx
+        record["web_mercator_y"] = my
+        record["spatial_reference_wkid"] = 3857
     return record

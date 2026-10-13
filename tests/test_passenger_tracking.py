@@ -171,6 +171,12 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(record["floor"], record["indoor_floor"])
         self.assertEqual(record["elevation_m"], {"L1": 8.0, "L0": 0.0}[record["floor"]])
         self.assertEqual(record["elevation_m"], record["indoor_z"])
+        self.assertEqual(record["reference_elevation_m"], locator.reference_elevation_m)
+        self.assertEqual(record["global_elevation_m"],
+                         round(record["reference_elevation_m"] + record["elevation_m"], 3))
+        self.assertEqual(record["spatial_reference_wkid"], 3857)
+        self.assertIn("web_mercator_x", record)
+        self.assertIn("web_mercator_y", record)
         self.assertTrue(17.22 < record["latitude"] < 17.25 and 78.41 < record["longitude"] < 78.44)
 
 

@@ -7,7 +7,10 @@
   "origin_lon": 78.4295,
   "rotation_deg": 0.0,
   "crs": "EPSG:4326",
-  "axes": "x east, y north, metres (local tangent plane)"
+  "axes": "x east, y north, metres (local tangent plane)",
+  "reference_elevation_m": 617.0,
+  "reference_elevation_basis": "poc_approx_amsl_rgia_not_surveyed",
+  "_reference_elevation_note": "POC placeholder (~617 m AMSL published for RGIA). Replace with GHIAL surveyed height of the local origin / L0 above your vertical datum. global_elevation_m = reference_elevation_m + elevation_m."
  },
  "floors": {
   "L1": {

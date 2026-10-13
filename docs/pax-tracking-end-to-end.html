@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AirportEye — passenger tracking, end to end</title>
+  <style>
+    :root {
+      --ink: #1a2332;
+      --muted: #5b6778;
+      --line: #d5deea;
+      --bg: #eef2f7;
+      --card: #fff;
+      --sim: #0b5cab;
+      --sim-soft: #e8f1fb;
+      --json: #0d7377;
+      --json-soft: #e5f5f5;
+      --kafka: #6b3fa0;
+      --kafka-soft: #f3eafc;
+      --ui: #1b7f4e;
+      --ui-soft: #e7f6ee;
+      --warn: #b45309;
+      --warn-soft: #fef3e2;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Segoe UI", Calibri, system-ui, sans-serif; color: var(--ink); background: var(--bg); line-height: 1.45; }
+    .page { max-width: 1100px; margin: 0 auto; padding: 28px 28px 64px; }
+    h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.02em; }
+    h2 { font-size: 18px; margin: 32px 0 10px; }
+    h3 { font-size: 14px; margin: 0 0 6px; }
+    p { margin: 0 0 10px; }
+    .sub { color: var(--muted); margin: 0 0 18px; }
+    .note { background: var(--warn-soft); border: 1px solid #f0d7b0; border-radius: 10px; padding: 12px 14px; margin: 0 0 18px; }
+    .note b { color: var(--warn); }
+    a { color: var(--sim); }
+    code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px; }
+    pre { background: #142033; color: #e8eef8; border-radius: 10px; padding: 14px 16px; overflow: auto; font-size: 12px; line-height: 1.5; }
+    table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 10px; overflow: hidden; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 13.5px; }
+    th { background: #f7f9fc; color: var(--muted); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+    tr:last-child td { border-bottom: 0; }
+
+    .flow { display: grid; grid-template-columns: 1fr 28px 1fr 28px 1fr 28px 1fr; gap: 0; align-items: stretch; margin: 8px 0 6px; }
+    .box { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 12px 10px; border-top: 4px solid var(--sim); }
+    .box.json { border-top-color: var(--json); }
+    .box.kafka { border-top-color: var(--kafka); }
+    .box.ui { border-top-color: var(--ui); }
+    .box .k { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+    .box ul { margin: 8px 0 0; padding-left: 16px; }
+    .box li { margin: 2px 0; font-size: 13px; }
+    .arrow { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 22px; }
+
+    .feeds { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+    .feed { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+    .feed .tag { display: inline-block; font-size: 11px; font-weight: 650; letter-spacing: .03em; padding: 2px 7px; border-radius: 999px; background: var(--sim-soft); color: var(--sim); }
+    .feed.json .tag { background: var(--json-soft); color: var(--json); }
+    .feed p { color: var(--muted); font-size: 13px; margin-top: 6px; }
+
+    .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .step { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+    .step .n { font-weight: 700; color: var(--sim); font-size: 12px; }
+
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+    ul.clean { margin: 6px 0 0; padding-left: 18px; }
+    ul.clean li { margin: 4px 0; }
+
+    @media (max-width: 860px) {
+      .flow { grid-template-columns: 1fr; }
+      .arrow { transform: rotate(90deg); height: 28px; }
+      .feeds, .steps, .two { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <h1>Passenger tracking, end to end</h1>
+  <p class="sub">RGIA Terminal 1. One synthetic simulation produces four flat JSON feeds. Kafka carries them. The local dashboard and Esri both read the same records. All passengers are synthetic. The building outline is OpenStreetMap. Floors, counters, and paths inside it are schematic.</p>
+
+  <div class="note">
+    <b>Two ways to look at it.</b>
+    <code>scripts/local_poc.sh map</code> draws the simulation straight into <a href="http://127.0.0.1:8080">http://127.0.0.1:8080</a>. The header says <b>in-process simulation</b>.
+    <code>scripts/local_poc.sh demo</code> publishes the same records to Kafka and the page reads those topics. The header then says <b>Live - kafka localhost:9092</b>.
+    The file sample is <code>AirportEye-pax-tracking-sample.zip</code>.
+  </div>
+
+  <h2>Architecture</h2>
+  <div class="flow">
+    <div class="box">
+      <div class="k">1 · Simulation</div>
+      <h3>Flights, then people</h3>
+      <ul>
+        <li>Six journey streams from config</li>
+        <li>Each person walks, queues, is served</li>
+        <li>One shared line per checkpoint</li>
+      </ul>
+    </div>
+    <div class="arrow">→</div>
+    <div class="box json">
+      <div class="k">2 · Flat JSON</div>
+      <h3>One object per record</h3>
+      <ul>
+        <li>No nested payload</li>
+        <li>Track id <span class="mono">entity_id</span></li>
+        <li>Time <span class="mono">event_time_epoch_ms</span></li>
+        <li>X/Y <span class="mono">longitude</span> / <span class="mono">latitude</span></li>
+        <li>Z <span class="mono">elevation_m</span></li>
+      </ul>
+    </div>
+    <div class="arrow">→</div>
+    <div class="box kafka">
+      <div class="k">3 · Kafka</div>
+      <h3>Four topics</h3>
+      <ul>
+        <li>Position every 5 s</li>
+        <li>Queue, zone, journey every minute</li>
+        <li>Key <span class="mono">HYD:&lt;entity_id&gt;</span></li>
+        <li>acks=all, lz4</li>
+      </ul>
+    </div>
+    <div class="arrow">→</div>
+    <div class="box ui">
+      <div class="k">4 · Readers</div>
+      <h3>Same records</h3>
+      <ul>
+        <li>Dashboard at :8080</li>
+        <li>ArcGIS Velocity or GeoEvent</li>
+        <li>Or the zip, with no broker</li>
+      </ul>
+    </div>
+  </div>
+  <p class="sub">Code: <span class="mono">generators/passenger.py</span> builds the people. <span class="mono">esri.py</span> flattens each event. <span class="mono">publishers/kafka.py</span> sends it. <span class="mono">scripts/map_viewer.py</span> and <span class="mono">scripts/viewer/index.html</span> draw it.</p>
+
+  <h2>What is simulated</h2>
+  <div class="steps">
+    <div class="step"><div class="n">1. Flights</div>A rate per hour, thinned by the local hour so morning and evening are busy. Id looks like <span class="mono">SYN-DD0001</span>. A departure gets a gate. That gate stays busy for 50 minutes.</div>
+    <div class="step"><div class="n">2. Passengers</div>Departures appear at the kerb before the flight. Arrivals come off buses of 60, first bus 4 minutes after landing, then every 3 minutes. Id <span class="mono">SYN-PAX-000001</span>.</div>
+    <div class="step"><div class="n">3. Path</div>Entry, check-in or skip, security, emigration if international, then gate. Arrivals do immigration, reclaim, exit. Shares in config pick DigiYatra, kiosk, web check-in, e-gate.</div>
+    <div class="step"><div class="n">4. Queue</div>One FIFO line. An open lane takes the person at the front and draws a service time. <span class="mono">queue_length</span> is people still waiting. People at a counter are <span class="mono">in_service</span>.</div>
+  </div>
+
+  <h3 style="margin-top:16px">Flights per hour at the peak</h3>
+  <p class="sub">From <span class="mono">config/passenger_tracking.json</span>. Seed 7, so the same start time always makes the same flights. There is no flight topic. <span class="mono">flight_id</span> and <span class="mono">gate_id</span> ride on the position record.</p>
+  <table>
+    <thead><tr><th>Journey</th><th>Flights / hour</th><th>Passengers</th><th>When they appear</th></tr></thead>
+    <tbody>
+      <tr><td>Domestic departure</td><td>8</td><td>60–120</td><td>60–120 min before departure</td></tr>
+      <tr><td>International departure</td><td>2</td><td>80–150</td><td>120–200 min before departure</td></tr>
+      <tr><td>Domestic arrival</td><td>6</td><td>60–120</td><td>Buses after landing</td></tr>
+      <tr><td>International arrival</td><td>2</td><td>80–150</td><td>Buses after landing</td></tr>
+      <tr><td>General aviation, each way</td><td>0.5</td><td>2–6</td><td>30–60 min before, for a GA departure</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="margin-top:16px">Lanes</h3>
+  <p class="sub">Installed count is in <span class="mono">config/hyderabad_touchpoints.json</span>. Lanes actually open are <span class="mono">open_channels</span> in <span class="mono">config/passenger_tracking.json</span>. A checkpoint missing from that list uses every installed lane. Each gate has its own queue of 2 lanes, 5–12 seconds. The boarding row on the page is the sum of those gates.</p>
+  <table>
+    <thead><tr><th>Checkpoint</th><th>Installed</th><th>Open</th><th>Service time</th></tr></thead>
+    <tbody>
+      <tr><td>Manual entry</td><td>8</td><td>4</td><td>8–20 s</td></tr>
+      <tr><td>DigiYatra entry</td><td>4</td><td>1</td><td>4–10 s</td></tr>
+      <tr><td>Domestic check-in</td><td>20</td><td>11</td><td>45–100 s</td></tr>
+      <tr><td>International check-in</td><td>14</td><td>10</td><td>60–150 s</td></tr>
+      <tr><td>Domestic security</td><td>20</td><td>12</td><td>20–55 s</td></tr>
+      <tr><td>International security</td><td>10</td><td>5</td><td>25–60 s</td></tr>
+      <tr><td>Arrival immigration</td><td>16</td><td>7</td><td>40–100 s</td></tr>
+      <tr><td>Emigration</td><td>inventory</td><td>6</td><td>inventory range</td></tr>
+    </tbody>
+  </table>
+  <p class="sub" style="margin-top:8px">If the open lanes finish people as fast as they arrive, <span class="mono">queue_length</span> stays 0 and the people you still see are in service. That is the waiting line being empty, not a stopped feed.</p>
+
+  <h2>The four feeds</h2>
+  <div class="feeds">
+    <div class="feed">
+      <span class="tag">passenger.position</span>
+      <h3>Every 5 seconds, one passenger</h3>
+      <p>The moving dot. <span class="mono">activity</span> is walking, queuing, in_service, dwelling, at_gate, reclaim, then boarded or exited. <span class="mono">longitude</span>, <span class="mono">latitude</span>, <span class="mono">floor</span>, <span class="mono">elevation_m</span> and <span class="mono">indoor_z</span> (the same height).</p>
+    </div>
+    <div class="feed">
+      <span class="tag">passenger.touchpoint</span>
+      <h3>Every minute, 16 checkpoints</h3>
+      <p>The white popup. Queue, lanes open, in service, estimated wait, measured wait, processing time, throughput since local midnight, status. The point is the checkpoint, not the passenger.</p>
+    </div>
+    <div class="feed">
+      <span class="tag">passenger.aggregate</span>
+      <h3>Every minute, one zone</h3>
+      <p>People, density per 100 m², and what they are doing. <span class="mono">longitude</span> / <span class="mono">latitude</span> are the zone centre. <span class="mono">cells</span> is a JSON string of 5 m grid counts.</p>
+    </div>
+    <div class="feed">
+      <span class="tag">passenger.journey_kpi</span>
+      <h3>Every minute, one terminal row</h3>
+      <p><span class="mono">entity_id</span> is <span class="mono">HYD-T1-JOURNEYS</span>. People in the terminal, kerb-to-airside, airside-to-boarding, arrival-to-exit, longest wait. No latitude, longitude, or height.</p>
+    </div>
+  </div>
+
+  <h2>JSON Esri receives</h2>
+  <p>One flat object per Kafka message. Do not send the nested files under <span class="mono">samples/</span>. Those still wrap a <span class="mono">payload</span>.</p>
+  <p><b>Heights.</b> <span class="mono">elevation_m</span> is local Z above the terminal ground floor (0 on L0, 8 on L1). <span class="mono">reference_elevation_m</span> is REFERENCE_Z for L0 / the local origin (POC: 617 m approx AMSL for RGIA, replace with your survey). <span class="mono">global_elevation_m</span> = reference + local, for a global 3D scene. Located records also carry <span class="mono">web_mercator_x</span> / <span class="mono">web_mercator_y</span> (EPSG:3857).</p>
+  <pre>{
+  "event_type": "passenger.position",
+  "entity_id": "SYN-PAX-006333",
+  "event_time_epoch_ms": 1791538205000,
+  "airport_id": "HYD",
+  "terminal_id": "HYD-MAIN",
+  "source_system": "synthetic-passenger-tracker",
+  "passenger_id": "SYN-PAX-006333",
+  "flight_id": "SYN-DD0085",
+  "gate_id": "SYN-HYD-GATE-12",
+  "journey": "domestic_departure",
+  "activity": "queuing",
+  "longitude": 78.4249783,
+  "latitude": 17.235909,
+  "floor": "L1",
+  "elevation_m": 8.0,
+  "indoor_z": 8.0,
+  "reference_elevation_m": 617.0,
+  "global_elevation_m": 625.0,
+  "web_mercator_x": 8730228.65,
+  "web_mercator_y": 1948303.61,
+  "spatial_reference_wkid": 3857
+}</pre>
+  <p class="sub">Feed settings for all four: track id <span class="mono">entity_id</span>, time <span class="mono">event_time_epoch_ms</span>, geometry X <span class="mono">longitude</span>, Y <span class="mono">latitude</span>, WGS84. For global Z use <span class="mono">global_elevation_m</span>. Split floors with <span class="mono">floor</span>.</p>
+
+  <h2>Kafka</h2>
+  <table>
+    <thead><tr><th>Feed</th><th>Topic</th></tr></thead>
+    <tbody>
+      <tr><td>Position</td><td><span class="mono">airport-eye.poc.esri.passenger.position</span></td></tr>
+      <tr><td>Checkpoint queue</td><td><span class="mono">airport-eye.poc.esri.passenger.touchpoint</span></td></tr>
+      <tr><td>Zone</td><td><span class="mono">airport-eye.poc.esri.passenger.aggregate</span></td></tr>
+      <tr><td>Journey</td><td><span class="mono">airport-eye.poc.esri.passenger.journey_kpi</span></td></tr>
+    </tbody>
+  </table>
+  <p style="margin-top:10px">Local broker is <span class="mono">localhost:9092</span> from <span class="mono">config/poc.json</span>. That address only works on this laptop. Esri can use their own cluster:</p>
+  <pre>export KAFKA_BOOTSTRAP_SERVERS=&lt;their-host:port&gt;
+export KAFKA_SECURITY_PROTOCOL=SASL_SSL
+export KAFKA_SASL_MECHANISM=PLAIN
+export KAFKA_SASL_USERNAME=&lt;user&gt;
+export KAFKA_SASL_PASSWORD=&lt;password&gt;
+scripts/local_poc.sh pax</pre>
+  <p class="sub">Messages are lz4. Their consumer has to accept lz4. This path has not been run against a live ArcGIS Velocity or GeoEvent feed yet.</p>
+
+  <h2>What the page shows</h2>
+  <div class="two">
+    <div class="card">
+      <h3>http://127.0.0.1:8080</h3>
+      <ul class="clean">
+        <li>Top tiles are the journey record.</li>
+        <li>Dots are position records. Click one for that passenger.</li>
+        <li>A checkpoint row opens the white box: queue, open lanes, in service, waits, processing time, and the 60-minute chart. It stays open and updates.</li>
+        <li>Zoomed in, grey blocks are the open lanes and the coloured area is the line.</li>
+        <li>Zones tab is the aggregate feed.</li>
+        <li>3D view stacks L0 at 0 m and L1 at 8 m.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>File sample already generated</h3>
+      <p><span class="mono">Claude outputs/AirportEye-pax-tracking-sample.zip</span></p>
+      <p>15 minutes, 9 Oct 2026, 08:00–08:15 IST. Same passengers in every file. Source <span class="mono">synthetic-passenger-tracker</span>.</p>
+      <ul class="clean">
+        <li><span class="mono">passenger_positions_…jsonl</span> — 299,679 positions, one JSON object per line</li>
+        <li><span class="mono">passenger_queues_…csv</span> — 240 rows, 16 checkpoints</li>
+        <li><span class="mono">zone_occupancy_…csv</span> — 330 rows</li>
+        <li><span class="mono">journey_kpis_…csv</span> — 15 rows</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Where to change it</h2>
+  <table>
+    <thead><tr><th>What</th><th>File</th></tr></thead>
+    <tbody>
+      <tr><td>Start the page, Kafka demo, or file export</td><td><span class="mono">scripts/local_poc.sh</span></td></tr>
+      <tr><td>Dashboard</td><td><span class="mono">scripts/viewer/index.html</span> and <span class="mono">scripts/map_viewer.py</span></td></tr>
+      <tr><td>Flights, paths, the queue and the lanes</td><td><span class="mono">src/airport_eye/generators/passenger.py</span></td></tr>
+      <tr><td>Flat JSON, longitude, latitude, elevation</td><td><span class="mono">src/airport_eye/esri.py</span></td></tr>
+      <tr><td>Kafka publish</td><td><span class="mono">src/airport_eye/publishers/kafka.py</span></td></tr>
+      <tr><td>Flight rates, show-up, hourly profile, lanes open now, seed</td><td><span class="mono">config/passenger_tracking.json</span></td></tr>
+      <tr><td>Installed lanes and service-time ranges</td><td><span class="mono">config/hyderabad_touchpoints.json</span></td></tr>
+      <tr><td>Outline, zones, checkpoint positions, gates, floor height</td><td><span class="mono">config/terminal_layout.json</span></td></tr>
+      <tr><td>Wait targets: normal, busy, congested</td><td><span class="mono">config/service_targets.json</span></td></tr>
+      <tr><td>Broker, topic prefix, partitions</td><td><span class="mono">config/poc.json</span></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Commands</h2>
+  <pre>scripts/local_poc.sh map          # page only, simulation inside the page
+scripts/local_poc.sh demo         # Kafka + four feeds + page
+scripts/local_poc.sh pax          # publish to Kafka, no page
+scripts/local_poc.sh pax-files    # write the four files, no Kafka</pre>
+
+</div>
+</body>
+</html>

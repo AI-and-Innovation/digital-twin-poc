@@ -22,6 +22,7 @@ from .models import IndoorPosition, OutdoorPosition
 
 EARTH_METRES_PER_DEG_LAT = 110_574.0
 EARTH_METRES_PER_DEG_LON_EQUATOR = 111_320.0
+WEB_MERCATOR_RADIUS_M = 6_378_137.0  # EPSG:3857 sphere
 
 
 @dataclass(frozen=True)
@@ -30,10 +31,16 @@ class LocalFrame:
     origin_lat: float
     origin_lon: float
     rotation_deg: float = 0.0  # clockwise rotation of the local +y axis from true north
+    # Metres above the vertical datum at the local origin / L0. Used as REFERENCE_Z so
+    # global_elevation_m = reference_elevation_m + floor-relative elevation_m.
+    # None until a surveyed (or agreed POC) value is set on the layout frame.
+    reference_elevation_m: float | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "LocalFrame":
-        return cls(data["frame_id"], data["origin_lat"], data["origin_lon"], data.get("rotation_deg", 0.0))
+        ref = data.get("reference_elevation_m")
+        return cls(data["frame_id"], data["origin_lat"], data["origin_lon"], data.get("rotation_deg", 0.0),
+                   None if ref is None else float(ref))
 
     @property
     def _scale_x(self) -> float:
@@ -53,6 +60,15 @@ class LocalFrame:
         angle = math.radians(self.rotation_deg)
         return (east * math.cos(angle) - north * math.sin(angle),
                 east * math.sin(angle) + north * math.cos(angle))
+
+
+def to_web_mercator(longitude: float, latitude: float) -> tuple[float, float]:
+    """WGS84 lon/lat -> EPSG:3857 metres (Web Mercator), matching the Esri hand-off snippet."""
+    lon = math.radians(longitude)
+    lat = math.radians(max(min(latitude, 85.05112878), -85.05112878))
+    x = WEB_MERCATOR_RADIUS_M * lon
+    y = WEB_MERCATOR_RADIUS_M * math.log(math.tan(math.pi / 4.0 + lat / 2.0))
+    return round(x, 3), round(y, 3)
 
 
 def point_in_polygon(x: float, y: float, polygon: list[list[float]]) -> bool:

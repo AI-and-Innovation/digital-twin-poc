@@ -78,11 +78,13 @@
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
   .legend .ramp { display: inline-block; width: 120px; height: 8px; vertical-align: middle; border-radius: 2px; background: linear-gradient(90deg, #e7f0fb, #6aa3dc, #3b5bb5, #6a2c91, #b0124f); }
   .banner { position: absolute; z-index: 600; left: 50%; top: 10px; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip, .leaflet-popup-content { color: #18202b; }
   .leaflet-popup-content { margin: 10px 12px; font: 12px/1.4 system-ui, sans-serif; }
   .tp-label { color: #fff; border: 0; font: 600 11px/1.3 system-ui, sans-serif; padding: 3px 7px; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
   .tp-label.tp-normal { background: #2e9e5b; } .tp-label.tp-busy { background: #d99100; } .tp-label.tp-congested { background: #d33f3f; } .tp-label.tp-no_target { background: #8a94a6; }
   .tp-label:before { display: none; }
-  .pop h4 { margin: 0 0 2px; font-size: 13px; }
+  .pop h4 { margin: 0 0 2px; font-size: 13px; color: #18202b; }
+  .pop dd { color: #18202b; }
   .pop .meta { color: #667085; font-size: 11px; margin-bottom: 6px; }
   .pop dl { display: grid; grid-template-columns: auto auto; gap: 1px 12px; margin: 0; }
   .pop dt { color: #667085; } .pop dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
@@ -222,7 +224,7 @@
   var show = { zones: true, heat: false, pax: true, touch: true };
   var colorBy = "activity", paxMarkers = {}, anim = {}, GLIDE_MS = 4500, DETAIL_ZOOM = 18;
   var tpGeoLayer = L.layerGroup().addTo(map);
-  var zonePolys = {}, touchMarkers = {};
+  var zonePolys = {}, touchMarkers = {}, tpDetail = {}, selectedTp = null;
 
   function banner(text, ms) { var b = $("banner"); b.textContent = text; b.hidden = false; if (ms) setTimeout(function () { b.hidden = true; }, ms); }
   function setFloor(f) { if (f && f !== floor) { floor = f; buttons(); drawLayout(); render(); } }
@@ -326,37 +328,98 @@
   function tpRect(g, a0, a1, l0, l1) { return [tpPoint(g, a0, l0), tpPoint(g, a0, l1), tpPoint(g, a1, l1), tpPoint(g, a1, l0)]; }
   // Zoomed in, a checkpoint is drawn as it is: open counters or lanes, the queue area in front (grows with
   // the queue, coloured by status) and a label.
+  function keepSelection(layer, id) {
+    layer.on("popupopen", function () { selectedTp = id; });
+    layer.on("popupclose", function () {
+      setTimeout(function () {
+        var current = checkpointLayer(id);
+        if (selectedTp === id && (!current || !current.isPopupOpen())) selectedTp = null;
+      }, 0);
+    });
+  }
+  function checkpointLayer(id) {
+    if (tpDetail[id] && tpGeoLayer.hasLayer(tpDetail[id].area)) return tpDetail[id].area;
+    if (touchMarkers[id] && touchLayer.hasLayer(touchMarkers[id])) return touchMarkers[id];
+    return null;
+  }
+  function refreshSelectedPopup() {
+    if (!selectedTp || !data) return;
+    var layer = checkpointLayer(selectedTp);
+    var p = (data.touchpoints || []).filter(function (x) { return x.entity_id === selectedTp; })[0];
+    if (!layer || !p) return;
+    layer.setPopupContent(tpPopup(p));
+    if (!layer.isPopupOpen()) layer.openPopup();
+  }
+  function dropDetail(id) {
+    var rec = tpDetail[id];
+    if (!rec) return;
+    tpGeoLayer.removeLayer(rec.area);
+    rec.lanes.forEach(function (l) { tpGeoLayer.removeLayer(l); });
+    delete tpDetail[id];
+  }
+  // Zoomed in, a checkpoint is drawn as it is: open counters or lanes, the queue area in front (grows with
+  // the queue, coloured by status) and a label. The shape is kept so its white popup can stay open and update.
   function drawCheckpoint(p, g) {
-    var colour = STATUS[p.status] || STATUS.no_target, n = Math.max(1, p.service_channels || 1), step = g.width_m / n;
+    var id = p.entity_id, colour = STATUS[p.status] || STATUS.no_target, n = Math.max(1, p.service_channels || 1), step = g.width_m / n;
     var q = p.queue_length || 0, rows = Math.ceil(q / g.per_row), span = Math.min(g.per_row * 0.75, g.width_m) / 2 + 0.6;
-    var area = L.polygon(tpRect(g, 1.2, q ? 2.5 + rows * 0.9 + 0.4 : 2.2, -span, span), { pane: "touch", color: colour, weight: 1.5, fillColor: colour, fillOpacity: 0.22 })
-      .bindPopup(tpPopup(p), { maxWidth: 300 }).addTo(tpGeoLayer);
-    for (var k = 0; k < n; k++) {
-      var lat = (k - (n - 1) / 2) * step, half = Math.min(0.7, step * 0.35);
-      L.polygon(tpRect(g, -0.5, 0.5, lat - half, lat + half), { pane: "touch", color: "#3d4757", weight: 1, fillColor: "#5c687a", fillOpacity: 1, interactive: false }).addTo(tpGeoLayer);
+    var areaLL = tpRect(g, 1.2, q ? 2.5 + rows * 0.9 + 0.4 : 2.2, -span, span);
+    var html = tpPopup(p);
+    var tip = "<b>" + esc(p.touchpoint_name || nice(p.entity_id)) + "</b><br>" + q + " waiting &middot; " + secs(p.estimated_wait_seconds) + " &middot; " + (p.service_channels || "-") + " open";
+    var tipOpt = { permanent: true, direction: "top", className: "tp-label tp-" + (p.status || "no_target"), offset: [0, -4] };
+    var rec = tpDetail[id];
+    if (!rec) {
+      var area = L.polygon(areaLL, { pane: "touch", color: colour, weight: 1.5, fillColor: colour, fillOpacity: 0.22 })
+        .bindPopup(html, { maxWidth: 300 }).bindTooltip(tip, tipOpt).addTo(tpGeoLayer);
+      keepSelection(area, id);
+      rec = tpDetail[id] = { area: area, lanes: [], channels: -1, status: p.status };
+    } else {
+      rec.area.setLatLngs(areaLL);
+      rec.area.setStyle({ color: colour, fillColor: colour });
+      rec.area.setPopupContent(html);
+      rec.area.setTooltipContent(tip);
+      if (rec.status !== p.status) {
+        rec.area.unbindTooltip();
+        rec.area.bindTooltip(tip, tipOpt);
+        rec.status = p.status;
+      }
     }
-    area.bindTooltip("<b>" + esc(p.touchpoint_name || nice(p.entity_id)) + "</b><br>" + q + " waiting &middot; " + secs(p.estimated_wait_seconds) + " &middot; " + (p.service_channels || "-") + " open",
-      { permanent: true, direction: "top", className: "tp-label tp-" + (p.status || "no_target"), offset: [0, -4] });
+    if (rec.channels !== n) {
+      rec.lanes.forEach(function (l) { tpGeoLayer.removeLayer(l); });
+      rec.lanes = [];
+      for (var k = 0; k < n; k++) {
+        var lat = (k - (n - 1) / 2) * step, half = Math.min(0.7, step * 0.35);
+        rec.lanes.push(L.polygon(tpRect(g, -0.5, 0.5, lat - half, lat + half), { pane: "touch", color: "#3d4757", weight: 1, fillColor: "#5c687a", fillOpacity: 1, interactive: false }).addTo(tpGeoLayer));
+      }
+      rec.channels = n;
+    } else {
+      for (var j = 0; j < n; j++) {
+        var lat2 = (j - (n - 1) / 2) * step, half2 = Math.min(0.7, step * 0.35);
+        rec.lanes[j].setLatLngs(tpRect(g, -0.5, 0.5, lat2 - half2, lat2 + half2));
+      }
+    }
   }
 
   function renderTouchpoints() {
     var order = { congested: 0, busy: 1, normal: 2, no_target: 3 };
     var tps = (data.touchpoints || []).slice().sort(function (a, b) { var oa = a.status in order ? order[a.status] : 3, ob = b.status in order ? order[b.status] : 3;
       return (oa - ob) || (b.queue_length - a.queue_length); });
-    var seen = {}, detail = map.getZoom() >= DETAIL_ZOOM && layout && layout.touchpoints;
-    tpGeoLayer.clearLayers();
+    var seen = {}, detailIds = {}, detail = map.getZoom() >= DETAIL_ZOOM && layout && layout.touchpoints;
     tps.forEach(function (p) {
       var id = p.entity_id, g = layout && layout.touchpoints ? layout.touchpoints[id] : null;
       if (!show.touch || (p.floor && p.floor !== floor) || p.longitude === null || p.longitude === undefined) return;
-      if (detail && g && !/BOARDING/.test(id)) { drawCheckpoint(p, g); return; }
+      if (detail && g && !/BOARDING/.test(id)) { drawCheckpoint(p, g); detailIds[id] = true; return; }
       seen[id] = true;
       var q = p.queue_length || 0, style = { pane: "touch", radius: 7 + Math.min(14, Math.sqrt(q) * 2.6), color: "#fff", weight: 2, fillColor: STATUS[p.status] || STATUS.no_target, fillOpacity: 0.8 };
       var m = touchMarkers[id];
-      if (!m) { m = touchMarkers[id] = L.circleMarker([p.latitude, p.longitude], style).bindPopup("", { maxWidth: 300 }); }
+      if (!m) {
+        m = touchMarkers[id] = L.circleMarker([p.latitude, p.longitude], style).bindPopup("", { maxWidth: 300 });
+        keepSelection(m, id);
+      }
       m.setLatLng([p.latitude, p.longitude]).setStyle(style).setPopupContent(tpPopup(p));
       if (!touchLayer.hasLayer(m)) touchLayer.addLayer(m);
     });
     Object.keys(touchMarkers).forEach(function (id) { if (!seen[id]) touchLayer.removeLayer(touchMarkers[id]); });
+    Object.keys(tpDetail).forEach(function (id) { if (!detailIds[id]) dropDetail(id); });
 
     $("tpRows").innerHTML = tps.map(function (p) {
       return '<tr class="row" data-id="' + esc(p.entity_id) + '"><td><div class="name">' + esc(p.touchpoint_name || nice(p.entity_id)) + '</div><div class="type">' + esc((p.touchpoint_type || "").replace("_", " ")) + " &middot; " + esc(p.floor || "") +
@@ -375,13 +438,15 @@
     $("alerts").innerHTML = alerts.length ? alerts.join("") : "None. Every checkpoint is within its wait target.";
     $("kAlerts").textContent = alerts.length;
     $("alertTile").classList.toggle("alert", alerts.length > 0);
+    refreshSelectedPopup();
   }
   $("tpRows").addEventListener("click", function (e) {
     var tr = e.target.closest("tr.row"); if (!tr || !data) return;
     var p = (data.touchpoints || []).filter(function (x) { return x.entity_id === tr.getAttribute("data-id"); })[0]; if (!p) return;
+    selectedTp = p.entity_id;
     setFloor(p.floor);
     map.flyTo([p.latitude, p.longitude], 19, { duration: 0.6 });
-    setTimeout(function () { var m = touchMarkers[p.entity_id]; if (m) m.openPopup(); }, 700);
+    refreshSelectedPopup();
   });
 
   function renderZones() {

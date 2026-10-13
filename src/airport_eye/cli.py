@@ -71,6 +71,12 @@ def main(argv: list[str] | None = None) -> int:
     pax_stream.add_argument("--config", default="config/poc.json", help="Kafka settings are read from this config")
     pax_stream.add_argument("--bootstrap", help="Override bootstrap servers (or set KAFKA_BOOTSTRAP_SERVERS)")
     pax_stream.add_argument("--no-create-topics", action="store_true")
+    pax_stream.add_argument("--rest-proxy", nargs="?", const="config/rest_proxy.json", metavar="CONFIG",
+                            help="Publish through a Kafka REST proxy instead of a broker (topics + URL from CONFIG, "
+                                 "default config/rest_proxy.json; credentials from KAFKA_REST_USER / KAFKA_REST_PASSWORD)")
+    pax_stream.add_argument("--interval", type=int,
+                            help="Seconds between position batches (must divide 60; default from the tracking config, 5). "
+                                 "15 or 30 cuts the position volume on a shared cluster")
     pax_files.add_argument("--out", default="output", help="Folder for the files (default: output)")
     pax_files.add_argument("--live", action="store_true",
                            help="Run in real time and rewrite passenger_positions_latest.csv/.geojson every interval")
@@ -108,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             load_config(args.config or "config/poc.json")
             raise NotImplementedError(f"{args.stream} generator is a scaffold; simulation is not implemented")
-    except (OSError, ValueError, ValidationError, NotImplementedError, KafkaPublishError) as exc:
+    except (OSError, ValueError, ValidationError, NotImplementedError, KafkaPublishError, RuntimeError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
     return 0
@@ -210,13 +216,23 @@ def _pax_stream(args: argparse.Namespace) -> int:
     from .tracking import run_tracking_stream
 
     _check_start(args.start)
-    config = load_config(args.config)
-    overrides = {"bootstrap.servers": args.bootstrap} if args.bootstrap else None
-    publisher = KafkaPublisher(config.kafka, fmt="esri", locator=ZoneLocator.from_file(args.zones), overrides=overrides)
-    print(f"Kafka: {publisher.producer_settings()['bootstrap.servers']}  topic: {publisher.topic_for_type('passenger.position')}")
+    locator = ZoneLocator.from_file(args.zones)
+    if args.rest_proxy:
+        from .publishers.rest_proxy import RestProxyConfig, RestProxyPublisher
+
+        publisher = RestProxyPublisher(RestProxyConfig.load(args.rest_proxy), locator)
+        print(f"Kafka REST proxy: {publisher.url}")
+        for event_type, topic in publisher.config.topics.items():
+            print(f"  {event_type:24s} -> {topic}")
+    else:
+        config = load_config(args.config)
+        overrides = {"bootstrap.servers": args.bootstrap} if args.bootstrap else None
+        publisher = KafkaPublisher(config.kafka, fmt="esri", locator=locator, overrides=overrides)
+        print(f"Kafka: {publisher.producer_settings()['bootstrap.servers']}  topic: {publisher.topic_for_type('passenger.position')}")
     try:
         run_tracking_stream(args.tracking_config, publisher, minutes=args.minutes, speed=args.speed,
-                            start=args.start, create_topics=not args.no_create_topics, scenario=args.scenario)
+                            start=args.start, create_topics=not args.no_create_topics, scenario=args.scenario,
+                            interval=args.interval)
     except KeyboardInterrupt:
         publisher.flush()
         print("Stopped.", publisher.stats())

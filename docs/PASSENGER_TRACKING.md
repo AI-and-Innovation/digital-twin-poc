@@ -154,6 +154,33 @@ All four are flat JSON (the Esri record), keyed by `entity_id`, with `event_time
 `zone_occupancy_*.csv` plus `zone_occupancy_latest.geojson` (zone **polygons** with the counts),
 `journey_kpis_*.csv/.json`. With `--live --history`, the minute feeds also append to `*_history.csv`.
 
+## 5b. Publishing through the dev Kafka REST proxy
+
+Where only the platform's Kafka REST Proxy is reachable (dev: `https://dev-aop-kafka-rest-proxy.wdplatform.com`),
+`pax-stream --rest-proxy` sends the same four feeds over HTTPS (v2 API, `application/vnd.kafka.json.v2+json`),
+one topic per feed, named in `config/rest_proxy.json` after the cluster's `aiop-<airport>-topic-<domain>-event-<tier>-v<n>`
+pattern:
+
+| Feed | Topic | Rate (default size) |
+|---|---|---|
+| Positions | `aiop-hyd-topic-pax-position-event-silver-v1` | ~345 msg/s at 5 s, ~58 msg/s at 30 s |
+| Checkpoint queues | `aiop-hyd-topic-pax-queue-event-gold-v1` | 16 per minute |
+| Zone occupancy | `aiop-hyd-topic-pax-zone-event-gold-v1` | 22 per minute |
+| Journey KPIs | `aiop-hyd-topic-pax-journey-kpi-event-gold-v1` | 1 per minute |
+
+```bash
+export KAFKA_REST_USER=...        # never commit these
+export KAFKA_REST_PASSWORD=...
+.venv/bin/airport-eye pax-stream --rest-proxy --interval 30 --minutes 15
+```
+
+- The topics must exist first: the v2 proxy cannot create topics, so the publisher checks and names any that
+  are missing. Ask the Kafka admin to create them (1 partition and 1-day retention, like the other `aiop-hyd` topics).
+- Volume: positions are about 1.1 KB each, so every 5 s is about 33 GB/day and every 30 s about 5.6 GB/day;
+  the three minute feeds together are about 150 MB/day. On the shared dev cluster use `--interval 30` and
+  `--minutes` for tests.
+- Records go out in requests of up to 500, keyed `HYD:<entity_id>`, with retries on 5xx/429 and a hard stop on rejections.
+
 ## 6. How this maps to ArcGIS
 
 | Feed | Suggested ArcGIS use |
