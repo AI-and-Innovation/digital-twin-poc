@@ -1,0 +1,33 @@
+{
+  "event_id": "e69ef210-bd48-56af-852e-0dadf5f7a8ad",
+  "event_type": "vehicle.position",
+  "schema_version": "1.0.0",
+  "airport_id": "HYD",
+  "terminal_id": "HYD-MAIN",
+  "source_system": "synthetic-passenger-tracker",
+  "entity_id": "SYN-VEH-CAR-00764",
+  "event_time": "2026-10-09T02:30:05Z",
+  "ingestion_time": "2026-10-09T02:30:05Z",
+  "sequence_no": 0,
+  "payload": {
+    "vehicle_id": "SYN-VEH-CAR-00764",
+    "vehicle_type": "private_car",
+    "domain": "landside",
+    "lat": 17.2367693,
+    "lon": 78.4305327,
+    "floor": "L1",
+    "x": 109.8,
+    "y": 140.4,
+    "speed_kmh": 0.0,
+    "heading_deg": 100.6,
+    "state": "dropping_off",
+    "road_name": "T1 Departure Dr Opposite",
+    "facility_id": "SYN-HYD-KERB-DEP-PRIVATE",
+    "stand_id": null,
+    "flight_id": "SYN-DD0043",
+    "task": null,
+    "passengers_on_board": 0,
+    "dwell_seconds": 125.0,
+    "overstay": false
+  }
+}

@@ -38,6 +38,7 @@ QUERY = ('[out:json][timeout:90];(rel(13609059);way(1016464110);way(1016464107);
 OSM_PARTS = {1016464108: "T1 west wing", 681497533: "T1 central processor", 1016464114: "T1 east wing",
              1016464110: "International Departures Terminal", 1016464107: "General Aviation Terminal"}
 
+REFERENCE_ELEVATION_M = 617.0   # height of L0 / the local origin above MSL (POC placeholder, not surveyed)
 FLOORS = {"L1": {"name": "Departures level", "z": 8.0}, "L0": {"name": "Arrivals / ground level", "z": 0.0}}
 
 
@@ -56,6 +57,7 @@ ZONES = [
     ("SYN-HYD-ZONE-CHECKIN", "L1", "Check-in halls and link to the international block",
      [box(-160, 50, 148, 84), box(-268, 60, -188, 125), box(-190, 80, -160, 96)]),
     ("SYN-HYD-ZONE-DEPARTURES", "L1", "Departures entry and forecourt", [box(-160, 84, 148, 132)]),
+    ("SYN-HYD-ZONE-KERB-DEP", "L1", "Departures kerb (drop-off drives)", [box(-160, 132, 150, 170)]),
     ("SYN-HYD-ZONE-DOM-DEPARTURES", "L1", "Domestic airside and gates",
      [box(-160, -58, 150, 15), "OSM:T1 east wing"]),
     ("SYN-HYD-ZONE-INT-DEPARTURES", "L1", "International airside and gates", ["OSM:T1 west wing"]),
@@ -64,6 +66,7 @@ ZONES = [
      [box(-200, -58, -20, 60), "OSM:T1 west wing", "OSM:International Departures Terminal"]),
     ("SYN-HYD-ZONE-DOM-ARRIVALS", "L0", "Domestic reclaim", [box(-20, -58, 150, 60), "OSM:T1 east wing"]),
     ("SYN-HYD-ZONE-CITYSIDE", "L0", "City-side check-in (J Pod) and ramp", [box(110, 132, 200, 215)]),
+    ("SYN-HYD-ZONE-FORECOURT", "L0", "Arrivals kerb, car parks and bus stop", [box(-360, 132, 320, 300)]),
     ("SYN-HYD-ZONE-GA", "L0", "General aviation terminal", ["OSM:General Aviation Terminal", box(161, 12, 231, 30)]),
 ] + [(f"SYN-HYD-ZONE-VID-0{i}", "L1", f"Information point {i}", [box(x - 3, 85, x + 3, 91)])
      for i, x in enumerate([-140, -100, -60, -10, 50, 100, 135], start=1)] + [
@@ -253,7 +256,12 @@ def main() -> None:
         "osm_timestamp": osm.get("osm3s", {}).get("timestamp_osm_base"),
         "frame": {"frame_id": FRAME.frame_id, "origin_lat": FRAME.origin_lat, "origin_lon": FRAME.origin_lon,
                   "rotation_deg": FRAME.rotation_deg, "crs": "EPSG:4326",
-                  "axes": "x east, y north, metres (local tangent plane)"},
+                  "axes": "x east, y north, metres (local tangent plane)",
+                  "reference_elevation_m": REFERENCE_ELEVATION_M,
+                  "reference_elevation_basis": "poc_approx_amsl_rgia_not_surveyed",
+                  "_reference_elevation_note": ("POC placeholder (~617 m AMSL published for RGIA). Replace with GHIAL "
+                                                "surveyed height of the local origin / L0 above your vertical datum. "
+                                                "global_elevation_m = reference_elevation_m + elevation_m.")},
         "floors": FLOORS,
         "buildings": [{"name": name, "polygon": outline} for name, outline in outlines.items()],
         "zones": zones,

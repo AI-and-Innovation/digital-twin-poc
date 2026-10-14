@@ -92,5 +92,40 @@
         "SYN-HYD-IMMIGRATION": 8
       }
     }
+  },
+  "ground_layout_file": "ground_layout.json",
+  "ground": {
+    "departure_modes": {
+      "private_car": 0.4,
+      "app_cab": 0.28,
+      "taxi": 0.06,
+      "bus": 0.1,
+      "car_park": 0.16
+    },
+    "arrival_modes": {
+      "private_car": 0.36,
+      "app_cab": 0.3,
+      "taxi": 0.08,
+      "bus": 0.1,
+      "car_park": 0.16
+    },
+    "party_size": [1, 4],
+    "dropoff_dwell_seconds": [40, 150],
+    "pickup_load_seconds": [30, 90],
+    "pickup_arrives_after_landing_minutes": [20, 45],
+    "cab_response_minutes": [3, 9],
+    "bus_every_minutes": 15,
+    "bus_dwell_minutes": [4, 8],
+    "car_park_initial_share": 0.6,
+    "gse_fleet": {
+      "baggage_tractor": 30,
+      "fuel_truck": 8,
+      "catering_truck": 8,
+      "apron_bus": 18,
+      "pushback_tug": 6,
+      "gpu": 24
+    },
+    "gse_late_after_seconds": 300,
+    "car_park_mean_stay_hours": 72
   }
 }

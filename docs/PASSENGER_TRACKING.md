@@ -1,6 +1,6 @@
 # Terminal simulation and passenger tracking - RGIA Terminal 1
 
-One simulation of Hyderabad's Terminal 1 produces four feeds. Every number comes from the same synthetic
+One simulation of Hyderabad's Terminal 1 produces four passenger feeds and five vehicle feeds (section 5c). Every number comes from the same synthetic
 passengers, so queue counts, zone counts and passenger dots always agree. **All passengers are synthetic.**
 
 ```
@@ -21,8 +21,8 @@ Flights -> passengers -> walk, queue, dwell, board / reclaim, exit        (gener
 ```bash
 scripts/local_poc.sh setup           # once
 scripts/local_poc.sh map             # dashboard with the simulation built in: no Kafka, no Docker
-scripts/local_poc.sh demo            # Kafka + all four feeds + dashboard (needs Docker)
-scripts/local_poc.sh pax-files --minutes 15   # all four feeds for 15 minutes as files
+scripts/local_poc.sh demo            # Kafka + all nine feeds + dashboard (needs Docker)
+scripts/local_poc.sh pax-files --minutes 15   # all nine feeds for 15 minutes as files
 scripts/local_poc.sh pax-files --live         # rewrite the *_latest files continuously
 ```
 
@@ -109,7 +109,7 @@ wherever the outlines are shown.
    times come from the inventory. Each gate has its own boarding queue.
 6. **Reproducible:** the same seed and start time always give the same passengers.
 
-## 5. The four feeds
+## 5. The four passenger feeds
 
 All four are flat JSON (the Esri record), keyed by `entity_id`, with `event_time_epoch_ms` as the time.
 
@@ -157,7 +157,7 @@ All four are flat JSON (the Esri record), keyed by `entity_id`, with `event_time
 ## 5b. Publishing through the dev Kafka REST proxy
 
 Where only the platform's Kafka REST Proxy is reachable (dev: `https://dev-aop-kafka-rest-proxy.wdplatform.com`),
-`pax-stream --rest-proxy` sends the same four feeds over HTTPS (v2 API, `application/vnd.kafka.json.v2+json`),
+`pax-stream --rest-proxy` sends the same feeds over HTTPS (v2 API, `application/vnd.kafka.json.v2+json`),
 one topic per feed, named in `config/rest_proxy.json` after the cluster's `aiop-<airport>-topic-<domain>-event-<tier>-v<n>`
 pattern:
 
@@ -167,12 +167,21 @@ pattern:
 | Checkpoint queues | `aiop-hyd-topic-pax-queue-event-gold-v1` | 16 per minute |
 | Zone occupancy | `aiop-hyd-topic-pax-zone-event-gold-v1` | 22 per minute |
 | Journey KPIs | `aiop-hyd-topic-pax-journey-kpi-event-gold-v1` | 1 per minute |
+| Landside vehicles | `aiop-hyd-topic-veh-position-event-silver-v1` | ~21 msg/s at 5 s, ~3.5 msg/s at 30 s |
+| Kerbs and car parks | `aiop-hyd-topic-curb-occupancy-event-gold-v1` | 7 per minute |
+| Road traffic | `aiop-hyd-topic-road-traffic-event-gold-v1` | ~10 per minute |
+| Ground handling vehicles | `aiop-hyd-topic-gse-position-event-silver-v1` | ~19 msg/s at 5 s, ~3 msg/s at 30 s |
+| Aircraft stands | `aiop-hyd-topic-stand-activity-event-gold-v1` | 51 per minute |
 
 ```bash
 export KAFKA_REST_USER=...        # never commit these
 export KAFKA_REST_PASSWORD=...
 .venv/bin/airport-eye pax-stream --rest-proxy --interval 30 --minutes 15
+.venv/bin/airport-eye pax-stream --rest-proxy --interval 30 --minutes 15 --feeds landside,airside   # vehicles only
 ```
+
+`--feeds` takes feed names or the groups `passengers`, `landside`, `airside` (default `all`); it also works
+on `pax-files`. Only the topics of the chosen feeds need to exist.
 
 - The topics must exist first: the v2 proxy cannot create topics, so the publisher checks and names any that
   are missing. Ask the Kafka admin to create them (1 partition and 1-day retention, like the other `aiop-hyd` topics).
@@ -180,6 +189,37 @@ export KAFKA_REST_PASSWORD=...
   the three minute feeds together are about 150 MB/day. On the shared dev cluster use `--interval 30` and
   `--minutes` for tests.
 - Records go out in requests of up to 500, keyed `HYD:<entity_id>`, with retries on 5xx/429 and a hard stop on rejections.
+
+## 5c. Kerbside, landside vehicles and airside ground handling
+
+The same simulation also runs the vehicles around the terminal (`src/airport_eye/generators/ground.py`,
+`config/ground_layout.json` built by `scripts/build_ground_layout.py`, the `ground` section of
+`config/passenger_tracking.json`). Vehicles are tied to the passengers and flights, so the feeds agree:
+
+- **Landside.** Departing passengers arrive in parties by private car, app cab, taxi, RTC bus (every 15 min)
+  or from the car park. Cars drive the real OSM roads (Dijkstra by travel time; elevated departure drive
+  on L1), wait for a free bay on the departures kerb, and the passengers appear in the terminal at that
+  bay. A full kerb delays them. Pick-ups arrive 20-45 min after landing and wait at the arrivals kerb or
+  the cab zone for their passengers, so slow immigration shows up as kerb overstays. After 10 min a car
+  gives up and goes to the car park.
+- **Airside.** Each flight books ground handling at its stand (51 real stands from OSM): ground power,
+  baggage tractors to and from the baggage hall, catering, fuel, pushback tug and apron buses to the bus
+  gates, timed against the flight. Vehicles come from a limited fleet at two depots and drive the apron
+  service roads; a task more than 5 min late counts as late.
+
+| Feed | Key | Rate | What is in it |
+|---|---|---|---|
+| `vehicle.position` | `vehicle_id` | every tick | private car, app cab, taxi, bus: lat/lon, floor, speed, heading, `state` (driving, queueing_for_kerb, dropping_off, at_kerb, loading, parked...), road, kerb, `dwell_seconds`, `overstay`, passengers on board |
+| `curb.occupancy` | `facility_id` | 1 min | 4 kerbs, the bus stop, car parks P1/P2: occupied / capacity, % full, queue to enter, overstays, average dwell, status |
+| `road.traffic` | `road_id` | 1 min | per named road: vehicles, average and free-flow speed, congestion level |
+| `gse.position` | `vehicle_id` | every tick | baggage tractor, fuel, catering, apron bus, pushback tug, ground power: position, state, stand, flight, task |
+| `stand.activity` | `stand_id` | 1 min | flight on stand, phase, vehicles present, tasks done/late, status (on_time, at_risk, delayed, vacant) |
+
+The dashboard has **Kerbside** and **Airside** tabs, and vehicles on both the 2D and the 3D map.
+
+**Real vs assumed:** roads, kerb roads, car park outlines, the bus stop and the stands are OpenStreetMap.
+Which stretch of road is which kerb, bay counts, dwell limits, car park capacities, mode shares, fleet sizes,
+depots and service times are assumptions to be replaced with RGIA data.
 
 ## 6. How this maps to ArcGIS
 
@@ -189,6 +229,8 @@ export KAFKA_REST_PASSWORD=...
 | Zone occupancy | Join to the zone polygon layer (`zone_occupancy_latest.geojson`) for a density choropleth per floor. |
 | Checkpoint queues | Point layer with status colours; ArcGIS Dashboards list and gauges for wait against target; alert when `status` is `congested`. |
 | Journey KPIs | Dashboards indicators and line charts. |
+| Vehicles, ground handling | Velocity feeds, track ID `vehicle_id`; symbolise by `vehicle_type` and `state`; geofence the kerbs and stands. |
+| Kerbs, roads, stands | Join to the kerb lines, road lines and stand points from `config/ground_layout.json`; Dashboards gauges for kerb % full and late stands. |
 
 **3D in ArcGIS:** every located record (positions, checkpoints, zones) carries `elevation_m`, the floor's
 height above the ground floor. Use it as Z in a scene layer (ArcGIS Scene Viewer, or ArcGIS Indoors 3D on

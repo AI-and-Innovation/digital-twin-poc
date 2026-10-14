@@ -68,6 +68,8 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--minutes", type=float, help="How long to run (default: until Ctrl-C when live, else the config range)")
         p.add_argument("--speed", type=float, default=1.0, help="Live only: time compression; 12 = 5 s of simulation per wall second")
         p.add_argument("--scenario", help="Named scenario from the tracking config, e.g. 'peak' (busy at any hour)")
+        p.add_argument("--feeds", default="all",
+                       help="Which feed groups to send: passengers, landside, airside (comma-separated) or all")
     pax_stream.add_argument("--config", default="config/poc.json", help="Kafka settings are read from this config")
     pax_stream.add_argument("--bootstrap", help="Override bootstrap servers (or set KAFKA_BOOTSTRAP_SERVERS)")
     pax_stream.add_argument("--no-create-topics", action="store_true")
@@ -213,7 +215,7 @@ def _check_start(start: datetime | None) -> None:
 
 
 def _pax_stream(args: argparse.Namespace) -> int:
-    from .tracking import run_tracking_stream
+    from .tracking import run_tracking_stream, select_feeds
 
     _check_start(args.start)
     locator = ZoneLocator.from_file(args.zones)
@@ -232,7 +234,7 @@ def _pax_stream(args: argparse.Namespace) -> int:
     try:
         run_tracking_stream(args.tracking_config, publisher, minutes=args.minutes, speed=args.speed,
                             start=args.start, create_topics=not args.no_create_topics, scenario=args.scenario,
-                            interval=args.interval)
+                            interval=args.interval, feeds=select_feeds(args.feeds))
     except KeyboardInterrupt:
         publisher.flush()
         print("Stopped.", publisher.stats())
@@ -240,7 +242,7 @@ def _pax_stream(args: argparse.Namespace) -> int:
 
 
 def _pax_files(args: argparse.Namespace) -> int:
-    from .tracking import TwinFileWriter, run_tracking_stream, write_tracking_range
+    from .tracking import TwinFileWriter, run_tracking_stream, select_feeds, write_tracking_range
 
     _check_start(args.start)
     locator = ZoneLocator.from_file(args.zones)
@@ -257,7 +259,8 @@ def _pax_files(args: argparse.Namespace) -> int:
           f"zone_occupancy_latest.*, journey_kpis_latest.* every minute. Ctrl-C to stop.")
     try:
         run_tracking_stream(args.tracking_config, writer, minutes=args.minutes, speed=args.speed,
-                            start=args.start, create_topics=False, scenario=args.scenario)
+                            start=args.start, create_topics=False, scenario=args.scenario,
+                            feeds=select_feeds(args.feeds))
     except KeyboardInterrupt:
         print("Stopped.", writer.stats())
     return 0

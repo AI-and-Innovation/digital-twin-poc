@@ -1,0 +1,33 @@
+{
+  "event_id": "ae216a47-6565-58a5-9065-661f25f12a2d",
+  "event_type": "curb.occupancy",
+  "schema_version": "1.0.0",
+  "airport_id": "HYD",
+  "terminal_id": "HYD-MAIN",
+  "source_system": "synthetic-passenger-tracker",
+  "entity_id": "SYN-HYD-KERB-DEP-PRIVATE",
+  "event_time": "2026-10-09T02:31:00Z",
+  "ingestion_time": "2026-10-09T02:31:00Z",
+  "sequence_no": 0,
+  "payload": {
+    "facility_id": "SYN-HYD-KERB-DEP-PRIVATE",
+    "name": "Departures kerb, private cars",
+    "facility_type": "kerb",
+    "purpose": "drop_off",
+    "floor": "L1",
+    "lat": 17.2367407,
+    "lon": 78.4294596,
+    "window_start": "2026-10-09T02:30:00Z",
+    "window_end": "2026-10-09T02:31:00Z",
+    "capacity": 41,
+    "occupied": 5,
+    "occupancy_pct": 12.2,
+    "vehicles_queuing": 0,
+    "arrivals": 357,
+    "departures": 352,
+    "avg_dwell_seconds": 109.2,
+    "max_dwell_seconds": 180.0,
+    "overstays": 0,
+    "status": "normal"
+  }
+}

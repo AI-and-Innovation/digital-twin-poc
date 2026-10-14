@@ -1,0 +1,33 @@
+{
+  "event_id": "bad0d4ae-91db-5c48-8b5e-773a9c3f7a11",
+  "event_type": "gse.position",
+  "schema_version": "1.0.0",
+  "airport_id": "HYD",
+  "terminal_id": "HYD-MAIN",
+  "source_system": "synthetic-passenger-tracker",
+  "entity_id": "SYN-GSE-BAG-003",
+  "event_time": "2026-10-09T02:30:05Z",
+  "ingestion_time": "2026-10-09T02:30:05Z",
+  "sequence_no": 0,
+  "payload": {
+    "vehicle_id": "SYN-GSE-BAG-003",
+    "vehicle_type": "baggage_tractor",
+    "domain": "airside",
+    "lat": 17.2344419,
+    "lon": 78.4239574,
+    "floor": "L0",
+    "x": -589.3,
+    "y": -117.0,
+    "speed_kmh": 0.0,
+    "heading_deg": 188.1,
+    "state": "servicing",
+    "road_name": "Apron service road",
+    "facility_id": null,
+    "stand_id": "SYN-HYD-STAND-62",
+    "flight_id": "SYN-IA0006",
+    "task": "baggage_tractor",
+    "passengers_on_board": 0,
+    "dwell_seconds": null,
+    "overstay": null
+  }
+}

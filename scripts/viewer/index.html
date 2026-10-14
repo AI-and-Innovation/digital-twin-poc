@@ -117,6 +117,8 @@
     <div class="tile"><b id="kK2A">-</b><span>kerb to airside, median</span></div>
     <div class="tile"><b id="kA2E">-</b><span>arrival to exit, median</span></div>
     <div class="tile"><b id="kLong">-</b><span id="kLongName">longest wait</span></div>
+    <div class="tile click" id="kerbTile"><b id="kKerb">-</b><span>departures kerb full</span></div>
+    <div class="tile click" id="standTile"><b id="kStands">-</b><span>stands delayed / active</span></div>
     <div class="tile click" id="alertTile"><b id="kAlerts">-</b><span>alerts</span></div>
   </div>
 </div>
@@ -127,6 +129,8 @@
       <button role="tab" aria-selected="true" data-tab="checkpoints">Checkpoints</button>
       <button role="tab" aria-selected="false" data-tab="zones">Zones</button>
       <button role="tab" aria-selected="false" data-tab="passenger">Passenger</button>
+      <button role="tab" aria-selected="false" data-tab="kerbside">Kerbside</button>
+      <button role="tab" aria-selected="false" data-tab="airside">Airside</button>
       <button role="tab" aria-selected="false" data-tab="how">How it works</button>
     </div>
 
@@ -148,6 +152,26 @@
 
     <div class="pane" id="pane-passenger">
       <div class="section" id="paxBox"></div>
+    </div>
+
+    <div class="pane" id="pane-kerbside">
+      <div class="section"><div class="hint">Kerbs, the bus stop and car parks: how full they are, vehicles waiting to get in, how long vehicles stop and how many overstay. Below, traffic on the roads into the terminal.</div></div>
+      <table>
+        <thead><tr><th>Kerb / car park</th><th class="num">Full</th><th class="num">Queue</th><th class="num">Dwell</th></tr></thead>
+        <tbody id="kerbRows"></tbody>
+      </table>
+      <table style="margin-top:8px">
+        <thead><tr><th>Road</th><th class="num">Vehicles</th><th class="num">km/h</th></tr></thead>
+        <tbody id="roadRows"></tbody>
+      </table>
+    </div>
+
+    <div class="pane" id="pane-airside">
+      <div class="section"><div class="hint">Aircraft stands with a turnaround under way: the flight, which ground vehicles are there and whether their tasks started on time. Below, the ground vehicle fleet.</div><div id="fleet" style="margin-top:8px"></div></div>
+      <table>
+        <thead><tr><th>Stand</th><th class="num">Vehicles</th><th class="num">Tasks</th><th class="num">Status</th></tr></thead>
+        <tbody id="standRows"></tbody>
+      </table>
     </div>
 
     <div class="pane" id="pane-how">
@@ -213,6 +237,8 @@
   // ---- map and layers ----
   var map = L.map("map", { zoomControl: true, preferCanvas: true }).setView([17.2356, 78.4290], 17);
   ["zones", "heat", "trail", "touch", "pax"].forEach(function (p, i) { map.createPane(p).style.zIndex = 400 + i * 10; });
+  map.createPane("ground").style.zIndex = 395;
+  map.createPane("veh").style.zIndex = 455;
   var tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 20, maxNativeZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
   var tileErrors = 0;
   tiles.on("tileerror", function () { if (++tileErrors === 3) banner("Base map tiles need internet. The terminal and data still draw without them.", 8000); });
@@ -221,7 +247,7 @@
   var paxRenderer = L.canvas({ pane: "pax", padding: 0.3 }), heatRenderer = L.canvas({ pane: "heat", padding: 0.3 });
 
   var layout = null, floor = "L1", data = null, live = true, following = null, followData = null, fitted = false;
-  var show = { zones: true, heat: false, pax: true, touch: true };
+  var show = { zones: true, heat: false, pax: true, touch: true, vehicles: true, ground: true };
   var colorBy = "activity", paxMarkers = {}, anim = {}, GLIDE_MS = 4500, DETAIL_ZOOM = 18;
   var tpGeoLayer = L.layerGroup().addTo(map);
   var zonePolys = {}, touchMarkers = {}, tpDetail = {}, selectedTp = null;
@@ -240,7 +266,7 @@
       fb.appendChild(b);
     });
     var lb = $("layerBtns"); lb.innerHTML = "";
-    [["zones", "Zone density"], ["heat", "Heatmap"], ["pax", "Passengers"], ["touch", "Checkpoints"]].forEach(function (x) {
+    [["zones", "Zone density"], ["heat", "Heatmap"], ["pax", "Passengers"], ["touch", "Checkpoints"], ["vehicles", "Vehicles"], ["ground", "Kerbs + stands"]].forEach(function (x) {
       var b = document.createElement("button"); b.className = "btn"; b.textContent = x[1]; b.setAttribute("aria-pressed", String(show[x[0]]));
       b.onclick = function () { show[x[0]] = !show[x[0]]; buttons(); render(); };
       lb.appendChild(b);
@@ -281,7 +307,7 @@
   // ---- rendering ----
   function render() {
     if (!data) { renderFollow(); return; }
-    renderTop(); renderZones(); renderTouchpoints(); renderPax(); renderHeat(); renderLegend(); renderFollow();
+    renderTop(); renderZones(); renderTouchpoints(); renderPax(); renderHeat(); renderGround(); renderLegend(); renderFollow();
   }
 
   function renderTop() {
@@ -558,7 +584,9 @@
       '<div class="row">' + items.map(function (x) { return '<span><i style="background:' + x[0] + '"></i>' + x[1] + " " + (x[2] || 0) + "</span>"; }).join("") + "</div>" +
       '<div class="row">Checkpoints: <span><i style="background:' + STATUS.normal + '"></i>On target</span><span><i style="background:' + STATUS.busy + '"></i>Busy</span><span><i style="background:' + STATUS.congested + '"></i>Over target</span></div>' +
       '<div class="row"><span>Density</span><span class="ramp"></span><span>' + DENSE + "+ per 100 m&sup2;</span></div>" +
-      '<div class="hint">Outline: OpenStreetMap. Interior: schematic. Zoom in to see counters, queue areas and labels.</div>';
+      (show.vehicles && data.vehicles && data.vehicles.rows.length ? '<div class="row">Vehicles: ' + ["private_car", "app_cab", "bus", "baggage_tractor", "fuel_truck", "catering_truck", "apron_bus", "pushback_tug", "gpu"].map(function (k) { return '<span><i style="background:' + VEH[k] + ';border:1px solid #111"></i>' + VEH_LABEL[k] + "</span>"; }).join("") + "</div>" : "") +
+      (show.ground && groundGeo ? '<div class="row">Kerbs, roads, stands: <span><i style="background:' + LEVEL.normal + '"></i>OK</span><span><i style="background:' + LEVEL.busy + '"></i>Busy / at risk</span><span><i style="background:' + LEVEL.congested + '"></i>Congested / delayed</span><span><i style="background:' + LEVEL.vacant + '"></i>Vacant stand</span></div>' : "") +
+      '<div class="hint">Outline, roads, stands: OpenStreetMap. Interior and kerb rules: schematic. Zoom in to see counters, queue areas and labels.</div>';
   }
 
   // ---- follow a passenger ----
@@ -608,6 +636,127 @@
       $("replayLbl").textContent = snaps.length > 1 ? "Drag to replay " + hhmm(snaps[0]).slice(0, 5) + " - " + hhmm(snaps[snaps.length - 1]).slice(0, 5) : "Replay builds up as minutes arrive";
     }
   }
+  // ---- landside vehicles, kerbs and roads; airside ground vehicles and stands ----
+  var VEH = { private_car: "#4c6ef5", app_cab: "#f59f00", taxi: "#fab005", bus: "#2b8a3e", baggage_tractor: "#e8590c",
+    fuel_truck: "#c92a2a", catering_truck: "#ae3ec9", apron_bus: "#1098ad", pushback_tug: "#343a40", gpu: "#868e96" };
+  var VEH_LABEL = { private_car: "Private car", app_cab: "App cab", taxi: "Taxi", bus: "RTC bus", baggage_tractor: "Baggage tractor",
+    fuel_truck: "Fuel truck", catering_truck: "Catering truck", apron_bus: "Apron bus", pushback_tug: "Pushback tug", gpu: "Ground power unit" };
+  var LEVEL = { normal: "#2e9e5b", busy: "#d99100", congested: "#d33f3f", free: "#2e9e5b", slow: "#d99100",
+    vacant: "#adb5bd", on_time: "#2e9e5b", at_risk: "#d99100", delayed: "#d33f3f" };
+  var groundGeo = null, groundLayer = L.layerGroup().addTo(map), vehLayer = L.layerGroup().addTo(map);
+  var vehRenderer = L.canvas({ pane: "veh", padding: 0.3 }), vehMarkers = {}, vehAnim = {}, kerbLines = {}, parkPolys = {}, standMarks = {}, roadLines = {};
+  function human(s) { return String(s || "-").replace(/_/g, " "); }
+
+  function drawGround() {
+    groundLayer.clearLayers(); kerbLines = {}; parkPolys = {}; standMarks = {}; roadLines = {};
+    if (!groundGeo) return;
+    var flip = function (pts) { return pts.map(function (p) { return [p[1], p[0]]; }); };
+    (groundGeo.apron_roads || []).forEach(function (seg) { L.polyline(flip(seg), { pane: "ground", color: "#868e96", weight: 1, opacity: 0.5, interactive: false }).addTo(groundLayer); });
+    (groundGeo.roads || []).forEach(function (r) {
+      roadLines[r.name] = r.segments.map(function (seg) { return L.polyline(flip(seg), { pane: "ground", color: "#2e9e5b", weight: 3, opacity: 0.55 }).bindTooltip(esc(r.name), { sticky: true }).addTo(groundLayer); });
+    });
+    (groundGeo.car_parks || []).forEach(function (p) { parkPolys[p.id] = L.polygon(flip(p.polygon), { pane: "ground", color: "#2e9e5b", weight: 1, fillOpacity: 0.12 }).bindTooltip(esc(p.name), { sticky: true }).addTo(groundLayer); });
+    (groundGeo.kerbs || []).forEach(function (k) { kerbLines[k.id] = L.polyline(flip(k.line), { pane: "ground", color: "#2e9e5b", weight: 7, opacity: 0.8, lineCap: "butt" }).bindTooltip(esc(k.name), { sticky: true }).addTo(groundLayer); });
+    (groundGeo.stands || []).forEach(function (st) { standMarks[st.id] = L.circleMarker([st.point[1], st.point[0]], { pane: "ground", radius: 6, color: "#fff", weight: 1.5, fillColor: LEVEL.vacant, fillOpacity: 0.9 }).bindTooltip(esc(st.ref || nice(st.id)), { sticky: true }).addTo(groundLayer); });
+  }
+
+  function renderGround() {
+    if (map.hasLayer(groundLayer) !== show.ground) { if (show.ground) groundLayer.addTo(map); else map.removeLayer(groundLayer); }
+    var curbs = data.curbs || [], roads = data.roads || [], stands = data.stands || [], alerts = [];
+    curbs.forEach(function (c) {
+      var line = kerbLines[c.facility_id], poly = parkPolys[c.facility_id], col = LEVEL[c.status] || LEVEL.normal;
+      var tip = "<b>" + esc(c.name) + "</b><br>" + c.occupied + " of " + c.capacity + " (" + Math.round(c.occupancy_pct) + "%)" + (c.vehicles_queuing ? " &middot; " + c.vehicles_queuing + " waiting to get in" : "") +
+        (c.avg_dwell_seconds ? "<br>average stop " + secs(c.avg_dwell_seconds) : "") + (c.overstays ? " &middot; " + c.overstays + " overstaying" : "");
+      if (line) line.setStyle({ color: col }).setTooltipContent(tip);
+      if (poly) poly.setStyle({ color: col, fillColor: col }).setTooltipContent(tip);
+      if (c.status === "congested" || c.overstays >= 5) alerts.push('<div class="alert-row"><span class="pill" style="background:' + LEVEL.congested + '">kerb</span><span><b>' + esc(c.name) + "</b>: " + Math.round(c.occupancy_pct) + "% full" + (c.vehicles_queuing ? ", " + c.vehicles_queuing + " queuing on the drive" : "") + (c.overstays ? ", " + c.overstays + " overstaying" : "") + "</span></div>");
+    });
+    var byName = {}; roads.forEach(function (r) { byName[r.name] = r; });
+    Object.keys(roadLines).forEach(function (name) {
+      var r = byName[name], col = r ? LEVEL[r.congestion] : LEVEL.free;
+      roadLines[name].forEach(function (l) { l.setStyle({ color: col }).setTooltipContent("<b>" + esc(name) + "</b><br>" + (r ? r.vehicles + " vehicles" + (r.avg_speed_kmh !== null ? ", " + Math.round(r.avg_speed_kmh) + " km/h" : "") : "no traffic")); });
+      if (r && r.congestion === "congested" && r.vehicles >= 3) alerts.push('<div class="alert-row"><span class="pill" style="background:' + LEVEL.congested + '">road</span><span><b>' + esc(name) + "</b>: " + r.vehicles + " vehicles at " + Math.round(r.avg_speed_kmh || 0) + " km/h</span></div>");
+    });
+    var activeStands = stands.filter(function (s) { return s.phase !== "vacant"; }), delayed = 0;
+    stands.forEach(function (st) {
+      var m = standMarks[st.stand_id]; if (!m) return;
+      m.setStyle({ fillColor: LEVEL[st.status] || LEVEL.vacant }).setTooltipContent("<b>" + esc(st.osm_ref || nice(st.stand_id)) + "</b>" + (st.flight_id ? "<br>" + esc(st.flight_id) + " &middot; " + human(st.phase) + "<br>" + st.vehicles_present + " vehicles &middot; tasks " + st.tasks_done + "/" + st.tasks_total + (st.tasks_late ? " (" + st.tasks_late + " late)" : "") : "<br>vacant"));
+      if (st.status === "delayed") { delayed++; alerts.push('<div class="alert-row"><span class="pill" style="background:' + LEVEL.delayed + '">stand</span><span><b>' + esc(st.osm_ref || nice(st.stand_id)) + "</b> (" + esc(st.flight_id) + "): " + st.tasks_late + " turnaround tasks late</span></div>"); }
+    });
+    var dep = curbs.filter(function (c) { return c.facility_id === "SYN-HYD-KERB-DEP-PRIVATE"; })[0];
+    $("kKerb").textContent = dep ? Math.round(dep.occupancy_pct) + "%" : "-";
+    $("kStands").textContent = stands.length ? delayed + " / " + activeStands.length : "-";
+    $("standTile").classList.toggle("alert", delayed > 0);
+    if (alerts.length) {
+      var box = $("alerts"), prior = box.querySelectorAll(".alert-row").length;
+      box.innerHTML = alerts.join("") + (prior ? box.innerHTML : "");
+      $("kAlerts").textContent = prior + alerts.length; $("alertTile").classList.add("alert");
+    }
+    $("kerbRows").innerHTML = curbs.length ? curbs.slice().sort(function (a, b) { return b.occupancy_pct - a.occupancy_pct; }).map(function (c) {
+      return '<tr class="row" data-fac="' + esc(c.facility_id) + '"><td><div class="name">' + esc(c.name) + '</div><div class="type">' + human(c.facility_type) + " &middot; " + human(c.purpose) + " &middot; " + c.occupied + "/" + c.capacity +
+        (c.overstays ? " &middot; " + c.overstays + " overstaying" : "") + '</div><div class="bar"><i style="width:' + Math.min(100, Math.round(c.occupancy_pct)) + "%;background:" + (LEVEL[c.status] || LEVEL.normal) + '"></i></div></td><td class="num">' + Math.round(c.occupancy_pct) + '%</td><td class="num">' + c.vehicles_queuing + '</td><td class="num">' + secs(c.avg_dwell_seconds) + "</td></tr>";
+    }).join("") : '<tr><td colspan="4" class="hint">Kerb data arrives once a minute.</td></tr>';
+    $("roadRows").innerHTML = roads.slice().sort(function (a, b) { return b.vehicles - a.vehicles; }).map(function (r) {
+      return '<tr><td><div class="name">' + esc(r.name) + '</div><div class="type"><span class="pill" style="background:' + LEVEL[r.congestion] + '">' + esc(r.congestion) + '</span></div></td><td class="num">' + r.vehicles + '</td><td class="num">' + (r.avg_speed_kmh === null ? "-" : Math.round(r.avg_speed_kmh)) + "</td></tr>";
+    }).join("");
+    var order = { delayed: 0, at_risk: 1, on_time: 2 };
+    $("standRows").innerHTML = activeStands.length ? activeStands.sort(function (a, b) { return (order[a.status] - order[b.status]) || a.stand_id.localeCompare(b.stand_id); }).map(function (st) {
+      return '<tr class="row" data-stand="' + esc(st.stand_id) + '"><td><div class="name">' + esc(st.osm_ref || nice(st.stand_id)) + " &middot; " + esc(st.flight_id) + '</div><div class="type">' + human(st.phase) + " &middot; " + st.flow + '</div></td><td class="num">' + st.vehicles_present + '</td><td class="num">' + st.tasks_done + "/" + st.tasks_total + '</td><td class="num"><span class="pill" style="background:' + LEVEL[st.status] + '">' + human(st.status) + "</span></td></tr>";
+    }).join("") : '<tr><td colspan="4" class="hint">Stand data arrives once a minute.</td></tr>';
+    var vf = data.vehicles && data.vehicles.fields ? data.vehicles.fields : [], fleet = {};
+    (data.vehicles && data.vehicles.rows || []).forEach(function (r) {
+      if (r[vf.indexOf("domain")] !== "airside") return;
+      var t = r[vf.indexOf("vehicle_type")], st = r[vf.indexOf("state")], f = fleet[t] = fleet[t] || { busy: 0, idle: 0 };
+      if (st === "idle") f.idle++; else f.busy++;
+    });
+    $("fleet").innerHTML = Object.keys(fleet).sort().map(function (t) { return '<div class="alert-row"><span class="pill" style="background:' + VEH[t] + '">' + fleet[t].busy + "/" + (fleet[t].busy + fleet[t].idle) + "</span><span>" + VEH_LABEL[t] + " in use</span></div>"; }).join("");
+    renderVehicles();
+  }
+
+  function vehPopup(r, f) {
+    var g = function (k) { return r[f.indexOf(k)]; }, rows = [["Type", VEH_LABEL[g("vehicle_type")]], ["State", human(g("state"))], ["Speed", Math.round(g("speed_kmh") || 0) + " km/h"]];
+    if (g("road_name")) rows.push(["Road", g("road_name")]);
+    if (g("facility_id")) rows.push(["Kerb / car park", nice(g("facility_id")).replace("KERB-", "")]);
+    if (g("dwell_seconds") !== null && g("dwell_seconds") !== undefined) rows.push(["Stopped for", secs(g("dwell_seconds")) + (g("overstay") ? " (overstay)" : "")]);
+    if (g("stand_id")) rows.push(["Stand", nice(g("stand_id"))]);
+    if (g("flight_id")) rows.push(["Flight", g("flight_id")]);
+    if (g("task")) rows.push(["Task", human(g("task"))]);
+    if (g("passengers_on_board")) rows.push(["Passengers", g("passengers_on_board")]);
+    return '<div class="pop"><h4>' + esc(r[0]) + '</h4><div class="meta">' + esc(g("domain")) + "</div><dl>" + rows.map(function (x) { return "<dt>" + esc(x[0]) + "</dt><dd>" + esc(x[1]) + "</dd>"; }).join("") + "</dl></div>";
+  }
+
+  function renderVehicles() {
+    var v = data.vehicles || { fields: [], rows: [] }, f = v.fields, now = performance.now(), seen = {};
+    if (!show.vehicles) { vehLayer.clearLayers(); vehMarkers = {}; vehAnim = {}; return; }
+    var iX = f.indexOf("longitude"), iY = f.indexOf("latitude"), iT = f.indexOf("vehicle_type");
+    v.rows.forEach(function (r) {
+      var id = r[0], a = vehAnim[id]; seen[id] = true;
+      if (!a || data.mode === "replay") a = vehAnim[id] = { from: [r[iY], r[iX]], to: [r[iY], r[iX]], t0: now };
+      else if (a.to[0] !== r[iY] || a.to[1] !== r[iX]) { a.from = glide(a, now); a.to = [r[iY], r[iX]]; a.t0 = now; }
+      var m = vehMarkers[id], style = { radius: r[iT] === "bus" || r[iT] === "apron_bus" ? 5.5 : 4.2, color: "#111", weight: 1.2, fillColor: VEH[r[iT]] || "#555", fillOpacity: 1 };
+      if (!m) {
+        m = vehMarkers[id] = L.circleMarker(glide(a, now), Object.assign({ renderer: vehRenderer, pane: "veh" }, style)).addTo(vehLayer);
+        m.on("click", function (e) { L.DomEvent.stopPropagation(e); var cur = (data.vehicles.rows || []).filter(function (x) { return x[0] === id; })[0]; if (cur) L.popup({ maxWidth: 260 }).setLatLng(e.latlng).setContent(vehPopup(cur, data.vehicles.fields)).openOn(map); });
+      } else m.setStyle(style);
+    });
+    Object.keys(vehMarkers).forEach(function (id) { if (!seen[id]) { vehLayer.removeLayer(vehMarkers[id]); delete vehMarkers[id]; delete vehAnim[id]; } });
+  }
+  setInterval(function () {
+    var now = performance.now();
+    Object.keys(vehMarkers).forEach(function (id) { var a = vehAnim[id]; if (a && now - a.t0 < GLIDE_MS + 200) vehMarkers[id].setLatLng(glide(a, now)); });
+  }, 100);
+  $("kerbTile").onclick = function () { selectTab("kerbside"); };
+  $("standTile").onclick = function () { selectTab("airside"); };
+  $("kerbRows").addEventListener("click", function (e) {
+    var tr = e.target.closest("tr.row"); if (!tr) return;
+    var id = tr.getAttribute("data-fac"), l = kerbLines[id] || parkPolys[id]; if (l) map.flyToBounds(l.getBounds(), { padding: [80, 80], maxZoom: 19, duration: 0.6 });
+  });
+  $("standRows").addEventListener("click", function (e) {
+    var tr = e.target.closest("tr.row"); if (!tr) return;
+    var m = standMarks[tr.getAttribute("data-stand")]; if (m) { map.flyTo(m.getLatLng(), 19, { duration: 0.6 }); setTimeout(function () { m.openTooltip(); }, 700); }
+  });
+  fetch("api/ground").then(function (r) { return r.ok ? r.json() : null; }).then(function (d) { groundGeo = d; drawGround(); if (data) render(); }).catch(function () {});
+
   function poll() {
     if (!live) return;
     fetch("api/state", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (d) { data = d; updateSlider(); render(); if (following) fetchTrack(); })

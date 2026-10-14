@@ -72,7 +72,7 @@ enable time on `window_end` (UTC).
 **Also needs:** Docker Desktop running.
 
 ```bash
-scripts/local_poc.sh demo          # starts Kafka, the dashboard, and the terminal simulation (all four feeds)
+scripts/local_poc.sh demo          # starts Kafka, the dashboard, and the terminal simulation (all nine feeds)
 ```
 
 `demo` opens the dashboard at <http://127.0.0.1:8080> and publishes until you press Ctrl-C: passenger
@@ -85,17 +85,21 @@ because event times then run ahead of the clock.
 ```bash
 scripts/local_poc.sh map                        # dashboard with the simulation built in (no Kafka, no Docker)
 scripts/local_poc.sh map --scenario peak        # the same, busy at any hour (queues and alerts for a demo)
-scripts/local_poc.sh pax-files --minutes 15     # 15 minutes of all four feeds to output/ (no Kafka)
+scripts/local_poc.sh pax-files --minutes 15     # 15 minutes of all nine feeds to output/ (no Kafka)
 scripts/local_poc.sh pax-files --live           # rewrite output/*_latest.* continuously
-scripts/local_poc.sh pax                        # all four feeds live to Kafka
+scripts/local_poc.sh pax                        # all nine feeds live to Kafka
 ```
 
-One simulation of Terminal 1 produces four feeds: passenger positions every 5 s, and every minute the
+One simulation of Terminal 1 produces four passenger feeds: positions every 5 s, and every minute the
 checkpoint queues, zone occupancy and journey times. They all come from the same passengers, so they
 agree. `demo` runs this simulation (it replaces the separate queue publisher). The dashboard at
 <http://127.0.0.1:8080> shows terminal KPIs, alerts, checkpoints against their targets, zone density, a
 heatmap, one floor at a time, lets you follow any passenger, and replays the last 90 minutes.
-Details and every field: `docs/PASSENGER_TRACKING.md`.
+The same simulation also produces kerbside and vehicle data: landside cars, cabs, taxis and buses on the
+real roads, kerb and car park occupancy, road traffic, airside ground handling vehicles and stand
+activity (five more feeds; **Kerbside** and **Airside** tabs on the dashboard). Choose feeds with
+`--feeds passengers|landside|airside|all`.
+Details and every field: `docs/PASSENGER_TRACKING.md` (sections 5 and 5c).
 
 ### See the live data
 

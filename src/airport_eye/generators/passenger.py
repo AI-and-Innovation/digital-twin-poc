@@ -43,6 +43,7 @@ from ..models import EventEnvelope, Model, NonEmpty, PassengerAggregate, Passeng
 from ..service_targets import ServiceTargets, nearest_rank, queue_attributes
 from ..spatial import WalkGraph, point_in_polygon
 from ..touchpoint_config import TouchpointInventory
+from .ground import GroundConfig, GroundSimulation
 
 DEPARTURES = ("domestic_departure", "international_departure", "ga_departure")
 ARRIVALS = ("domestic_arrival", "international_arrival", "ga_arrival")
@@ -111,7 +112,10 @@ class TrackingConfig(Model):
     reclaim_wait_minutes: tuple[float, float]
     arrivals_hall_dwell_minutes: tuple[float, float]
     scenarios: dict[str, Scenario] = Field(default_factory=dict)
+    ground_layout_file: NonEmpty | None = None   # roads, kerbs, stands (config/ground_layout.json)
+    ground: GroundConfig | None = None           # landside vehicles + kerbside, airside ground handling
     _targets: ServiceTargets | None = PrivateAttr(default=None)
+    _ground_layout: dict | None = PrivateAttr(default=None)
 
     def with_scenario(self, name: str | None) -> "TrackingConfig":
         """The config with a named scenario applied (None or "" = unchanged)."""
@@ -124,6 +128,7 @@ class TrackingConfig(Model):
         updated = self.model_copy(update={"flights": flights, "open_channels": {**self.open_channels, **sc.open_channels},
                                           "hourly_profile": sc.hourly_profile or self.hourly_profile})
         updated._targets = self._targets
+        updated._ground_layout = self._ground_layout
         return updated
 
     model_config = Model.model_config | {"populate_by_name": True}
@@ -137,6 +142,8 @@ def load_tracking(path: str | Path, scenario: str | None = None,
     inventory = TouchpointInventory.model_validate_json((path.parent / config.inventory_file).read_text(encoding="utf-8"))
     if config.service_targets_file:
         config._targets = ServiceTargets.load(path.parent / config.service_targets_file)
+    if config.ground_layout_file and config.ground is not None:
+        config._ground_layout = json.loads((path.parent / config.ground_layout_file).read_text(encoding="utf-8"))
     return config.with_scenario(scenario), layout, inventory, (path.parent / config.output_directory).resolve()
 
 
@@ -324,6 +331,9 @@ class TerminalSimulation:
         self.ev_boarded: deque[tuple[float, float]] = deque()   # (time, airside->boarding minutes)
         self.ev_exited: deque[tuple[float, float]] = deque()    # (time, arrival->exit minutes)
         self._init_schedule()
+        # Vehicles: landside traffic brings and takes passengers; airside vehicles serve the flights.
+        self.ground = (GroundSimulation(self, config._ground_layout, config.ground, f"{config.seed}:{start.isoformat()}")
+                       if config._ground_layout is not None and config.ground is not None else None)
 
     # -- schedule ------------------------------------------------------------
     # Flights are generated lazily, a little ahead of simulated time, so a live run
@@ -371,6 +381,10 @@ class TerminalSimulation:
                     self._gate_free[gate] = t + cfg.boarding.gate_turnaround_minutes * 60
                 flight = Flight(f"SYN-{FLIGHT_PREFIX[journey]}{int(state['number']):04d}", journey, t, gate,
                                 rng.randint(*stream.passengers))
+                handled = self.ground is not None and journey in ("domestic_departure", "international_departure")
+                kerb_arrivals, arriving = [], []
+                if self.ground is not None and not journey.startswith("ga_"):
+                    self.ground.add_flight(flight)
                 for k in range(flight.passengers):
                     if journey in DEPARTURES:
                         at = t - rng.uniform(*stream.arrive_before_departure_minutes) * 60
@@ -380,9 +394,21 @@ class TerminalSimulation:
                                   + (k // buses.passengers_per_bus) * buses.minutes_between_buses) * 60 \
                             + rng.uniform(0, 20)
                     pax = self._passenger(flight, at)  # always drawn, so the stream never depends on t1
-                    if t0 <= at < t1:
+                    if at < t0:
+                        continue
+                    # Vehicles get every passenger regardless of the end time, so a longer run of the same
+                    # start replays the same vehicles; nothing past the end is ever reached.
+                    if handled:   # they arrive by vehicle: the ground simulation lets them out at the kerb
+                        kerb_arrivals.append((at, pax))
+                        continue
+                    arriving.append(pax)
+                    if at < t1:
                         self._order += 1
                         heapq.heappush(self.spawns, (at, self._order, pax))
+                if handled and kerb_arrivals:
+                    self.ground.add_departures(flight, kerb_arrivals)
+                elif self.ground is not None and journey in ("domestic_arrival", "international_arrival") and arriving:
+                    self.ground.add_arrival_passengers(flight, arriving)
 
     def _point_in(self, area: str, rng: random.Random | None = None) -> tuple[float, float, str]:
         rng = rng or self.rng
@@ -467,6 +493,8 @@ class TerminalSimulation:
             self.ev_boarded.append((now, (now - pax.airside_at) / 60))
         elif activity == "exited" and pax.journey in ARRIVALS:
             self.ev_exited.append((now, (now - pax.spawned_at) / 60))
+            if self.ground is not None:
+                self.ground.on_arrival_exit(pax, now)
 
     def _next_step(self, pax: Passenger, now: float) -> None:
         """Start the passenger's next plan step (called when the previous one is complete)."""
@@ -570,9 +598,45 @@ class TerminalSimulation:
                 pax.x, pax.y = queue.exit_point()
                 pax.step += 1
                 self._next_step(pax, now)
+        if self.ground is not None:
+            self.ground.tick(now, dt)
         report = self.active
         self.active = [p for p in self.active if not p.done]
         return report
+
+    def release(self, pax: Passenger, now: float, x: float, y: float, floor: str) -> None:
+        """A passenger gets out of a vehicle (kerb, bus stop, car park) and starts their journey."""
+        pax.x, pax.y, pax.floor = x, y, floor
+        pax.spawned_at = now
+        self.active.append(pax)
+        self._next_step(pax, now)
+
+    def vehicle_records(self, when: datetime) -> list[EventEnvelope]:
+        g = self.ground
+        if g is None:
+            return []
+        records = []
+        for v in g.vehicles + g.fleet:
+            payload = g.position_payload(v, self.config.interval_seconds, when.timestamp())
+            kind = "vehicle.position" if v.domain == "landside" else "gse.position"
+            records.append(self._envelope(kind, v.vehicle_id, when, payload))
+        return records
+
+    def ground_minute_records(self, now: float, when: datetime) -> list[EventEnvelope]:
+        from ..models import CurbOccupancy, RoadTraffic, StandActivity
+
+        g = self.ground
+        if g is None:
+            return []
+        ws = when - timedelta(seconds=60)
+        records = []
+        for p in g.facility_payloads(now, ws, when):
+            records.append(self._envelope("curb.occupancy", p["facility_id"], when, CurbOccupancy(**p).model_dump(mode="json")))
+        for p in g.road_payloads(ws, when):
+            records.append(self._envelope("road.traffic", p["road_id"], when, RoadTraffic(**p).model_dump(mode="json")))
+        for p in g.stand_payloads(now, ws, when):
+            records.append(self._envelope("stand.activity", p["stand_id"], when, StandActivity(**p).model_dump(mode="json")))
+        return records
 
     # -- records -------------------------------------------------------------
     def zone_of(self, x: float, y: float, floor: str) -> str:
@@ -726,8 +790,14 @@ def generate_ticks(config: TrackingConfig, layout: dict[str, Any], inventory: To
         people = sim.tick(ts, step)
         reporting = now > start
         records = [sim.record(p, now) for p in people] if reporting else []
+        if reporting:
+            records += sim.vehicle_records(now)
+        if sim.ground is not None:
+            sim.ground.finished_landside()
         if abs(ts - round(ts)) < 1e-3 and round(ts) % 60 == 0:
             records += sim.minute_records(ts, now, reporting)
+            if reporting:
+                records += sim.ground_minute_records(ts, now)
         if reporting:
             yield now, records
 

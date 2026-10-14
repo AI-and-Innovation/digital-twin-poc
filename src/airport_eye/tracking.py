@@ -25,9 +25,37 @@ from .queue_files import _replace, to_csv, to_geojson
 from .spatial import LocalFrame
 from .streaming import floor_to_interval, publish_paced
 
-FEEDS = ("passenger.position", "passenger.touchpoint", "passenger.aggregate", "passenger.journey_kpi")
+FEEDS = ("passenger.position", "passenger.touchpoint", "passenger.aggregate", "passenger.journey_kpi",
+         "vehicle.position", "curb.occupancy", "road.traffic", "gse.position", "stand.activity")
+POSITION_FEEDS = ("passenger.position", "vehicle.position", "gse.position")   # every interval
+FEED_GROUPS = {"passengers": FEEDS[:4], "landside": ("vehicle.position", "curb.occupancy", "road.traffic"),
+               "airside": ("gse.position", "stand.activity")}
+
+
+def select_feeds(groups: str | None) -> tuple[str, ...]:
+    """'passengers,landside' -> the event types of those groups (None or 'all' = every feed)."""
+    if not groups or groups == "all":
+        return FEEDS
+    chosen: list[str] = []
+    for g in groups.split(","):
+        g = g.strip()
+        if g not in FEED_GROUPS:
+            raise ValueError(f"Unknown feed group {g!r}; use {', '.join(FEED_GROUPS)} or all")
+        chosen += [t for t in FEED_GROUPS[g] if t not in chosen]
+    return tuple(chosen)
 POSITION_TOPIC_TYPE = "passenger.position"
+VEHICLE_LEADING = ["vehicle_id", "vehicle_type", "domain", "state", "event_time", "longitude", "latitude", "floor",
+                   "elevation_m", "speed_kmh", "heading_deg", "road_name", "facility_id", "stand_id", "flight_id", "task",
+                   "passengers_on_board", "dwell_seconds", "overstay"]
 LEADING = {
+    "vehicle.position": VEHICLE_LEADING, "gse.position": VEHICLE_LEADING,
+    "curb.occupancy": ["facility_id", "name", "facility_type", "purpose", "floor", "window_end", "capacity", "occupied",
+                       "occupancy_pct", "vehicles_queuing", "arrivals", "departures", "avg_dwell_seconds", "overstays",
+                       "status", "longitude", "latitude"],
+    "road.traffic": ["road_id", "name", "window_end", "vehicles", "avg_speed_kmh", "speed_limit_kmh", "congestion",
+                     "longitude", "latitude"],
+    "stand.activity": ["stand_id", "osm_ref", "flow", "window_end", "flight_id", "phase", "status", "on_block", "off_block",
+                       "vehicles_present", "tasks_total", "tasks_done", "tasks_late", "longitude", "latitude"],
     "passenger.position": ["passenger_id", "journey", "activity", "touchpoint_id", "flight_id", "gate_id",
                            "minutes_to_departure",
                            "event_time", "longitude", "latitude", "floor", "elevation_m", "indoor_zone_id", "indoor_x", "indoor_y",
@@ -42,7 +70,9 @@ LEADING = {
                               "arrival_to_exit_p90_minutes", "longest_wait_touchpoint_id",
                               "longest_estimated_wait_seconds", "touchpoints_busy", "touchpoints_congested"],
 }
-STEMS = {"passenger.position": "passenger_positions", "passenger.touchpoint": "passenger_queues",
+STEMS = {"vehicle.position": "vehicle_positions", "gse.position": "gse_positions", "curb.occupancy": "kerb_occupancy",
+         "road.traffic": "road_traffic", "stand.activity": "stand_activity",
+         "passenger.position": "passenger_positions", "passenger.touchpoint": "passenger_queues",
          "passenger.aggregate": "zone_occupancy", "passenger.journey_kpi": "journey_kpis"}
 
 
@@ -93,7 +123,7 @@ def _window(config, start: datetime | None, minutes: float | None, live: bool) -
 
 def run_tracking_stream(config_path: str | Path, publisher: Any, *, minutes: float | None = None,
                         speed: float = 1.0, start: datetime | None = None, create_topics: bool = True,
-                        scenario: str | None = None, interval: int | None = None,
+                        scenario: str | None = None, interval: int | None = None, feeds: tuple[str, ...] = FEEDS,
                         clock: Callable[[], float] = time.time, sleep: Callable[[float], None] = time.sleep,
                         log: Callable[[str], None] = print) -> dict[str, int]:
     """Publish one batch per interval, in real time (``speed`` compresses time).
@@ -115,11 +145,16 @@ def run_tracking_stream(config_path: str | Path, publisher: Any, *, minutes: flo
     begin, end = _window(config, start, minutes, live=True)
     log(f"Terminal simulation: positions every {config.interval_seconds}s, queues/zones/journeys every minute, "
         f"speed x{speed:g}; warming up from local midnight first")
+    if config.ground is None:
+        feeds = tuple(f for f in feeds if f in FEED_GROUPS["passengers"])
+    log("Feeds: " + ", ".join(feeds))
     if create_topics:
-        topics = [publisher.topic_for_type(t) for t in FEEDS]
+        topics = [publisher.topic_for_type(t) for t in feeds]
         created = publisher.ensure_topics(topics)
         log("Topics ready: " + ", ".join(topics) + (f" (created {len(created)})" if created else ""))
-    ticks = generate_ticks(config, layout, inventory, begin, end)
+    wanted = set(feeds)
+    ticks = ((when, [e for e in records if e.event_type in wanted])
+             for when, records in generate_ticks(config, layout, inventory, begin, end))
     publish_paced(ticks, publisher, origin=begin, speed=speed, clock=clock, sleep=sleep, log=log,
                   every=max(1, 60 // config.interval_seconds))
     return publisher.stats()
@@ -157,13 +192,19 @@ class TwinFileWriter:
             handle.write(to_csv(records, names, header=first))
 
     def flush(self, timeout: float = 0.0) -> None:
-        positions = self._batch.get("passenger.position", [])
-        names = columns_for("passenger.position", positions[0]) if positions else LEADING["passenger.position"]
-        _replace(self.out_dir / "passenger_positions_latest.csv", to_csv(positions, names))
-        _replace(self.out_dir / "passenger_positions_latest.geojson", json.dumps(to_geojson(positions, names)))
-        if self.position_history and positions:
-            self._append_history("passenger.position", positions, names)
-        for event_type in FEEDS[1:]:
+        for event_type in POSITION_FEEDS:
+            positions = self._batch.get(event_type, [])
+            if not positions and event_type != "passenger.position":
+                continue
+            stem = STEMS[event_type]
+            names = columns_for(event_type, positions[0]) if positions else LEADING[event_type]
+            _replace(self.out_dir / f"{stem}_latest.csv", to_csv(positions, names))
+            _replace(self.out_dir / f"{stem}_latest.geojson", json.dumps(to_geojson(positions, names)))
+            if self.position_history and positions:
+                self._append_history(event_type, positions, names)
+        for event_type in FEEDS:
+            if event_type in POSITION_FEEDS:
+                continue
             records = self._batch.get(event_type)
             if not records:
                 continue
@@ -171,7 +212,7 @@ class TwinFileWriter:
             names = columns_for(event_type, records[0])
             if event_type == "passenger.aggregate":
                 _replace(self.out_dir / f"{stem}_latest.geojson", json.dumps(zones_geojson(records, self.polygons)))
-            elif event_type == "passenger.touchpoint":
+            elif event_type in ("passenger.touchpoint", "curb.occupancy", "road.traffic", "stand.activity"):
                 _replace(self.out_dir / f"{stem}_latest.geojson", json.dumps(to_geojson(records, names)))
             _replace(self.out_dir / f"{stem}_latest.csv", to_csv(records, names))
             if event_type == "passenger.journey_kpi":

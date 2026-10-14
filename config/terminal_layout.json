@@ -838,6 +838,31 @@
    ]
   },
   {
+   "zone_id": "SYN-HYD-ZONE-KERB-DEP",
+   "name": "Departures kerb (drop-off drives)",
+   "floor": "L1",
+   "polygons": [
+    [
+     [
+      -160,
+      132
+     ],
+     [
+      150,
+      132
+     ],
+     [
+      150,
+      170
+     ],
+     [
+      -160,
+      170
+     ]
+    ]
+   ]
+  },
+  {
    "zone_id": "SYN-HYD-ZONE-DOM-DEPARTURES",
    "name": "Domestic airside and gates",
    "floor": "L1",
@@ -1807,6 +1832,31 @@
      [
       110,
       215
+     ]
+    ]
+   ]
+  },
+  {
+   "zone_id": "SYN-HYD-ZONE-FORECOURT",
+   "name": "Arrivals kerb, car parks and bus stop",
+   "floor": "L0",
+   "polygons": [
+    [
+     [
+      -360,
+      132
+     ],
+     [
+      320,
+      132
+     ],
+     [
+      320,
+      300
+     ],
+     [
+      -360,
+      300
      ]
     ]
    ]

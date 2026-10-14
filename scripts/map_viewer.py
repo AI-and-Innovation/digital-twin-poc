@@ -28,7 +28,11 @@ from urllib.parse import parse_qs, urlparse
 HERE = Path(__file__).resolve().parent
 VIEWER = HERE / "viewer"
 PREFIX = "airport-eye.poc.esri."
-FEEDS = ("passenger.touchpoint", "passenger.position", "passenger.aggregate", "passenger.journey_kpi")
+FEEDS = ("passenger.touchpoint", "passenger.position", "passenger.aggregate", "passenger.journey_kpi",
+         "vehicle.position", "curb.occupancy", "road.traffic", "gse.position", "stand.activity")
+VEHICLE_FIELDS = ("longitude", "latitude", "floor", "vehicle_type", "domain", "state", "speed_kmh", "heading_deg",
+                  "facility_id", "stand_id", "flight_id", "task", "passengers_on_board", "dwell_seconds", "overstay",
+                  "road_name")
 POSITION_FIELDS = ("longitude", "latitude", "floor", "activity", "journey", "flight_id", "gate_id",
                    "indoor_zone_id", "touchpoint_id", "minutes_to_departure", "heading_deg")
 TP_FIELDS = ("entity_id", "touchpoint_name", "touchpoint_type", "flow", "floor", "longitude", "latitude",
@@ -52,6 +56,10 @@ class TwinState:
         self.kpi: dict | None = None
         self.kpi_history: deque = deque(maxlen=SNAPSHOT_MINUTES)
         self.positions: dict[str, tuple[int, list]] = {}
+        self.vehicles: dict[str, tuple[int, list]] = {}
+        self.curbs: dict[str, dict] = {}
+        self.roads: dict[str, dict] = {}
+        self.stands: dict[str, dict] = {}
         self.tracks: dict[str, deque] = {}
         self.timelines: dict[str, list] = {}
         self.ended: dict[str, int] = {}
@@ -79,6 +87,19 @@ class TwinState:
                 self.touchpoints[tp] = {k: record.get(k) for k in TP_FIELDS}
                 self.tp_history.setdefault(tp, deque(maxlen=60)).append(
                     [when, record.get("queue_length"), record.get("estimated_wait_seconds")])
+            elif kind in ("vehicle.position", "gse.position"):
+                vid = record.get("entity_id")
+                if vid and record.get("longitude") is not None:
+                    if record.get("state") in ("exited", "parked"):
+                        self.vehicles.pop(vid, None)
+                    else:
+                        self.vehicles[vid] = (when, [record.get(f) for f in VEHICLE_FIELDS])
+            elif kind == "curb.occupancy":
+                self.curbs[record.get("entity_id")] = record
+            elif kind == "road.traffic":
+                self.roads[record.get("entity_id")] = record
+            elif kind == "stand.activity":
+                self.stands[record.get("entity_id")] = record
             elif kind == "passenger.aggregate":
                 self.zones[record.get("zone_id")] = {k: v for k, v in record.items() if k != "cells"}
             elif kind == "passenger.journey_kpi":
@@ -111,6 +132,8 @@ class TwinState:
         for pax in [p for p, (when, _) in self.positions.items() if when < cutoff]:
             del self.positions[pax]
             self.ended[pax] = self.newest_ms
+        for vid in [v for v, (when, _) in self.vehicles.items() if when < cutoff]:
+            del self.vehicles[vid]
         forget = self.newest_ms - 10 * 60_000  # keep ended tracks for 10 minutes
         for pax in [p for p, when in self.ended.items() if when < forget]:
             self.ended.pop(pax, None)
@@ -121,11 +144,20 @@ class TwinState:
         return {"fields": ["passenger_id", *POSITION_FIELDS],
                 "rows": [[pax] + values for pax, (_, values) in self.positions.items()]}
 
+    def _vehicles_payload(self) -> dict:
+        return {"fields": ["vehicle_id", *VEHICLE_FIELDS],
+                "rows": [[vid] + values for vid, (_, values) in self.vehicles.items()]}
+
+    def _ground(self) -> dict:
+        return {"curbs": list(self.curbs.values()), "roads": list(self.roads.values()),
+                "stands": list(self.stands.values())}
+
     def _snapshot(self, when: int) -> None:
         self._prune()
         self.snapshots.append({"t": when, "kpi": self.kpi, "touchpoints": list(self.touchpoints.values()),
-                               "zones": list(self.zones.values()),
-                               "positions": json.dumps(self._positions_payload(), separators=(",", ":"))})
+                               "zones": list(self.zones.values()), **self._ground(),
+                               "positions": json.dumps(self._positions_payload(), separators=(",", ":")),
+                               "vehicles": json.dumps(self._vehicles_payload(), separators=(",", ":"))})
 
     # -- views -----------------------------------------------------------------
     def state(self) -> dict:
@@ -137,6 +169,7 @@ class TwinState:
             return {"mode": "live", "t": self.newest_ms or None, "kpi": self.kpi,
                     "kpi_history": list(self.kpi_history), "touchpoints": touchpoints,
                     "zones": list(self.zones.values()), "positions": self._positions_payload(),
+                    "vehicles": self._vehicles_payload(), **self._ground(),
                     "snapshots": [s["t"] for s in self.snapshots],
                     "stats": {"received": self.received, "source": self.source, "seconds_since_last": age,
                               "error": self.error}}
@@ -151,6 +184,8 @@ class TwinState:
                            for tp in snap["touchpoints"]]
             return {"mode": "replay", "t": snap["t"], "kpi": snap["kpi"], "kpi_history": kpi_history,
                     "touchpoints": touchpoints, "zones": snap["zones"], "positions": json.loads(snap["positions"]),
+                    "vehicles": json.loads(snap.get("vehicles") or '{"fields":[],"rows":[]}'),
+                    "curbs": snap.get("curbs", []), "roads": snap.get("roads", []), "stands": snap.get("stands", []),
                     "snapshots": [s["t"] for s in self.snapshots],
                     "stats": {"received": self.received, "source": self.source, "seconds_since_last": None,
                               "error": self.error}}
@@ -272,7 +307,32 @@ def layout_geojson(path: str) -> dict:
             "touchpoints": touchpoints, "gates": gates, "deg_per_m": per_m, "note": layout.get("_note", "")}
 
 
-def make_handler(state: TwinState, layout: dict | None):
+def ground_geojson(path: str) -> dict | None:
+    """Kerbs, car parks, stands and named roads from the ground layout, in WGS84."""
+    from airport_eye.spatial import LocalFrame
+
+    try:
+        g = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    frame = LocalFrame.from_dict(g["frame"])
+    ll = lambda pts: [list(frame.to_wgs84(x, y)) for x, y in pts]
+    nodes = {n["id"]: (n["x"], n["y"]) for n in g["roads"]["nodes"]}
+    roads: dict[str, list] = {}
+    for a, b, _len, _kmh, level, name, side, _way in g["roads"]["edges"]:
+        if name and side == "landside" and "Terminal 2" not in name and not name.startswith("T2 "):
+            roads.setdefault(name, []).append([list(frame.to_wgs84(*nodes[a])), list(frame.to_wgs84(*nodes[b]))])
+    apron = [[list(frame.to_wgs84(*nodes[a])), list(frame.to_wgs84(*nodes[b]))]
+             for a, b, *_rest in g["roads"]["edges"] if _rest[4] == "airside"]
+    return {"kerbs": [{"id": k["kerb_id"], "name": k["name"], "floor": k["floor"], "line": ll(k["polyline"])} for k in g["kerbs"]],
+            "car_parks": [{"id": p["park_id"], "name": p["name"], "polygon": ll(p["polygon"])} for p in g["car_parks"]],
+            "stands": [{"id": s["stand_id"], "ref": s.get("osm_ref"), "flow": s["flow"],
+                        "point": list(frame.to_wgs84(s["x"], s["y"]))} for s in g["stands"]],
+            "roads": [{"name": n, "segments": segs} for n, segs in roads.items()],
+            "apron_roads": apron}
+
+
+def make_handler(state: TwinState, layout: dict | None, ground: dict | None = None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_args):  # keep the console quiet
             pass
@@ -298,6 +358,8 @@ def make_handler(state: TwinState, layout: dict | None):
                 return self._json(snap or {}, 200 if snap else 404)
             if url.path == "/api/track":
                 return self._json(state.track(query.get("id", [""])[0]))
+            if url.path == "/api/ground":
+                return self._json(ground or {}, 200 if ground else 404)
             if url.path == "/api/layout":
                 return self._json(layout or {}, 200 if layout else 404)
             rel = "index.html" if url.path in ("/", "") else url.path.lstrip("/")
@@ -321,6 +383,7 @@ def main() -> None:
     ap.add_argument("--scenario", help="--simulate only: named scenario from the tracking config, e.g. 'peak'")
     ap.add_argument("--file", help="replay a generated touchpoint JSONL file instead of reading Kafka")
     ap.add_argument("--zones", default="config/terminal_layout.json")
+    ap.add_argument("--ground", default="config/ground_layout.json", help="roads, kerbs and stands to draw")
     ap.add_argument("--replay-seconds", type=float, default=1.0, help="seconds per simulated minute in --file mode")
     ap.add_argument("--port", type=int, default=8080)
     ap.add_argument("--host", default="127.0.0.1")
@@ -341,7 +404,7 @@ def main() -> None:
         worker = threading.Thread(target=consume_kafka, args=(state, args.bootstrap, topics, args.from_beginning, group),
                                   daemon=True)
     worker.start()
-    server = ThreadingHTTPServer((args.host, args.port), make_handler(state, layout))
+    server = ThreadingHTTPServer((args.host, args.port), make_handler(state, layout, ground_geojson(args.ground)))
     print(f"Dashboard: http://{args.host}:{args.port}   (Ctrl-C to stop)")
     try:
         server.serve_forever()

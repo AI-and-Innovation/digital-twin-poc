@@ -200,6 +200,100 @@ class PassengerJourneyKpi(Model):
         return self
 
 
+class VehiclePosition(Model):
+    """A landside vehicle (car, cab, taxi, bus) or an airside ground handling vehicle at event_time."""
+
+    vehicle_id: NonEmpty
+    vehicle_type: Literal["private_car", "app_cab", "taxi", "bus", "baggage_tractor", "fuel_truck",
+                          "catering_truck", "apron_bus", "pushback_tug", "gpu"]
+    domain: Literal["landside", "airside"]
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+    floor: NonEmpty                       # L1 = elevated departures drive, L0 = ground
+    x: float                              # terminal-local metres
+    y: float
+    speed_kmh: float = Field(ge=0)
+    heading_deg: float = Field(ge=0, lt=360)
+    state: NonEmpty                       # driving, queuing, dropping_off, at_kerb, loading, leaving, parked, exited, idle, to_stand, servicing, ...
+    road_name: str | None = None
+    facility_id: str | None = Field(default=None, description="Kerb, bus stop or car park the vehicle is heading to or using")
+    stand_id: str | None = None
+    flight_id: str | None = None
+    task: str | None = Field(default=None, description="Airside: the turnaround task being served")
+    passengers_on_board: int = Field(ge=0)
+    dwell_seconds: float | None = Field(default=None, ge=0)
+    overstay: bool | None = None
+
+
+class CurbOccupancy(Model):
+    """Kerb, bus stop or car park occupancy for one window."""
+
+    facility_id: NonEmpty
+    name: NonEmpty
+    facility_type: Literal["kerb", "bus_stop", "car_park"]
+    purpose: NonEmpty
+    floor: NonEmpty
+    lat: float
+    lon: float
+    window_start: AwareDatetime
+    window_end: AwareDatetime
+    capacity: int = Field(ge=0)
+    occupied: int = Field(ge=0)
+    occupancy_pct: float = Field(ge=0)
+    vehicles_queuing: int = Field(ge=0)
+    arrivals: int = Field(ge=0)
+    departures: int = Field(ge=0)
+    avg_dwell_seconds: float | None = Field(default=None, ge=0)
+    max_dwell_seconds: float | None = Field(default=None, gt=0)
+    overstays: int = Field(ge=0)
+    status: Literal["normal", "busy", "congested"]
+
+
+class RoadTraffic(Model):
+    """Vehicles and average speed on one named landside road for one window."""
+
+    road_id: NonEmpty
+    name: NonEmpty
+    floor: NonEmpty
+    lat: float
+    lon: float
+    window_start: AwareDatetime
+    window_end: AwareDatetime
+    vehicles: int = Field(ge=0)
+    avg_speed_kmh: float | None = Field(default=None, ge=0)
+    speed_limit_kmh: float = Field(gt=0)
+    congestion: Literal["free", "slow", "congested"]
+    length_m: float = Field(gt=0)
+
+
+class StandActivity(Model):
+    """An aircraft stand's turnaround status for one window."""
+
+    stand_id: NonEmpty
+    osm_ref: str | None = None
+    flow: Literal["dom", "int"]
+    lat: float
+    lon: float
+    floor: NonEmpty
+    window_start: AwareDatetime
+    window_end: AwareDatetime
+    flight_id: str | None = None
+    phase: Literal["vacant", "arrival_turnaround", "departure_preparation"]
+    on_block: AwareDatetime | None = None
+    off_block: AwareDatetime | None = None
+    vehicles_present: int = Field(ge=0)
+    baggage_tractor_present: int = Field(ge=0)
+    fuel_truck_present: int = Field(ge=0)
+    catering_truck_present: int = Field(ge=0)
+    apron_bus_present: int = Field(ge=0)
+    pushback_tug_present: int = Field(ge=0)
+    gpu_present: int = Field(ge=0)
+    tasks_total: int = Field(ge=0)
+    tasks_done: int = Field(ge=0)
+    tasks_late: int = Field(ge=0)
+    status: Literal["vacant", "on_time", "at_risk", "delayed"]
+
+
 class AODBFlight(Model):
     flight_id: NonEmpty
     flight_number: NonEmpty
@@ -259,6 +353,11 @@ PAYLOAD_MODELS = {
     "passenger.position": PassengerPosition,
     "passenger.aggregate": PassengerAggregate,
     "passenger.journey_kpi": PassengerJourneyKpi,
+    "vehicle.position": VehiclePosition,
+    "gse.position": VehiclePosition,
+    "curb.occupancy": CurbOccupancy,
+    "road.traffic": RoadTraffic,
+    "stand.activity": StandActivity,
     "aodb.flight": AODBFlight,
     "rms.assignment": RMSAssignment,
     "acdm.milestone": ACDMMilestone,
@@ -270,6 +369,8 @@ ENTITY_FIELDS = {
     "facility.telemetry": "point_id", "passenger.touchpoint": "touchpoint_id",
     "passenger.position": "passenger_id", "passenger.aggregate": "zone_id",
     "passenger.journey_kpi": "kpi_id",
+    "vehicle.position": "vehicle_id", "gse.position": "vehicle_id", "curb.occupancy": "facility_id",
+    "road.traffic": "road_id", "stand.activity": "stand_id",
     "aodb.flight": "flight_id", "rms.assignment": "assignment_id",
     "acdm.milestone": "flight_id", "aircraft.position": "aircraft_id",
 }

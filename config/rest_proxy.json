@@ -5,7 +5,12 @@
     "passenger.position": "aiop-hyd-topic-pax-position-event-silver-v1",
     "passenger.touchpoint": "aiop-hyd-topic-pax-queue-event-gold-v1",
     "passenger.aggregate": "aiop-hyd-topic-pax-zone-event-gold-v1",
-    "passenger.journey_kpi": "aiop-hyd-topic-pax-journey-kpi-event-gold-v1"
+    "passenger.journey_kpi": "aiop-hyd-topic-pax-journey-kpi-event-gold-v1",
+    "vehicle.position": "aiop-hyd-topic-veh-position-event-silver-v1",
+    "curb.occupancy": "aiop-hyd-topic-curb-occupancy-event-gold-v1",
+    "road.traffic": "aiop-hyd-topic-road-traffic-event-gold-v1",
+    "gse.position": "aiop-hyd-topic-gse-position-event-silver-v1",
+    "stand.activity": "aiop-hyd-topic-stand-activity-event-gold-v1"
   },
   "records_per_request": 500,
   "timeout_seconds": 30,
