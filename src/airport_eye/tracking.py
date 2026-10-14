@@ -232,34 +232,35 @@ PositionFileWriter = TwinFileWriter
 
 def write_tracking_range(config_path: str | Path, locator: ZoneLocator, out_dir: str | Path, *,
                          start: datetime | None = None, minutes: float | None = None,
-                         scenario: str | None = None) -> tuple[list[Path], int]:
-    """Simulate a time range and write every feed: CSV per feed, plus positions as JSONL."""
+                         scenario: str | None = None, feeds: tuple[str, ...] = FEEDS) -> tuple[list[Path], int]:
+    """Simulate a time range and write the chosen feeds: a CSV and a JSONL (one Kafka message per line) each."""
     config, layout, inventory, _ = load_tracking(config_path, scenario)
     begin, end = _window(config, start, minutes, live=False)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     tag = begin.strftime("%Y%m%dT%H%MZ")
-    paths = {t: out / f"{STEMS[t]}_{tag}.csv" for t in FEEDS}
-    jsonl_path = out / f"passenger_positions_{tag}.jsonl"
+    feeds = tuple(t for t in FEEDS if t in feeds)
+    paths = {t: out / f"{STEMS[t]}_{tag}.csv" for t in feeds}
+    jsonl_paths = {t: out / f"{STEMS[t]}_{tag}.jsonl" for t in feeds}
     handles = {t: p.open("w", encoding="utf-8", newline="") for t, p in paths.items()}
+    jsonl = {t: p.open("w", encoding="utf-8", newline="\n") for t, p in jsonl_paths.items()}
     names: dict[str, list[str]] = {}
     count = 0
     try:
-        with jsonl_path.open("w", encoding="utf-8", newline="\n") as jsonl_out:
-            for _, events in generate_ticks(config, layout, inventory, begin, end):
-                grouped: dict[str, list[dict[str, Any]]] = {}
-                for event in events:
+        for _, events in generate_ticks(config, layout, inventory, begin, end):
+            grouped: dict[str, list[dict[str, Any]]] = {}
+            for event in events:
+                if event.event_type in handles:
                     grouped.setdefault(event.event_type, []).append(to_esri_record(event, locator))
-                for event_type, records in grouped.items():
-                    if event_type not in names:
-                        names[event_type] = columns_for(event_type, records[0])
-                        handles[event_type].write(to_csv([], names[event_type]))
-                    handles[event_type].write(to_csv(records, names[event_type], header=False))
-                    if event_type == "passenger.position":
-                        for record in records:
-                            jsonl_out.write(json.dumps(record, separators=(",", ":")) + "\n")
-                    count += len(records)
+            for event_type, records in grouped.items():
+                if event_type not in names:
+                    names[event_type] = columns_for(event_type, records[0])
+                    handles[event_type].write(to_csv([], names[event_type]))
+                handles[event_type].write(to_csv(records, names[event_type], header=False))
+                for record in records:
+                    jsonl[event_type].write(json.dumps(record, separators=(",", ":")) + "\n")
+                count += len(records)
     finally:
-        for handle in handles.values():
+        for handle in [*handles.values(), *jsonl.values()]:
             handle.close()
-    return [paths["passenger.position"], jsonl_path] + [paths[t] for t in FEEDS[1:]], count
+    return [p for t in feeds for p in (paths[t], jsonl_paths[t])], count

@@ -216,6 +216,16 @@ class OutputTests(unittest.TestCase):
         self.assertGreater(count, len(rows))  # positions plus the minute feeds
         self.assertEqual(list(rows[0])[:4], ["passenger_id", "journey", "activity", "touchpoint_id"])
 
+    def test_range_writes_only_the_chosen_feeds(self):
+        with tempfile.TemporaryDirectory() as out:
+            config, layout, _, _ = load_tracking(TRACKING)
+            paths, count = write_tracking_range(TRACKING, ZoneLocator.from_layout(layout), out, start=START,
+                                                minutes=1.5, feeds=("curb.occupancy", "stand.activity"))
+            self.assertEqual(sorted(p.name.split("_2026")[0] for p in Path(out).iterdir()),
+                             ["kerb_occupancy", "kerb_occupancy", "stand_activity", "stand_activity"])
+            lines = sum(len(p.read_text(encoding="utf-8").splitlines()) for p in paths if p.suffix == ".jsonl")
+        self.assertEqual(lines, count)
+
 
 if __name__ == "__main__":
     unittest.main()

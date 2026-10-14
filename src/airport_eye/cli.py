@@ -248,7 +248,8 @@ def _pax_files(args: argparse.Namespace) -> int:
     locator = ZoneLocator.from_file(args.zones)
     if not args.live:
         paths, count = write_tracking_range(args.tracking_config, locator, args.out, start=args.start,
-                                            minutes=args.minutes, scenario=args.scenario)
+                                            minutes=args.minutes, scenario=args.scenario,
+                                            feeds=select_feeds(args.feeds))
         print(f"Wrote {count} records:")
         for path in paths:
             print(f"  {path}")

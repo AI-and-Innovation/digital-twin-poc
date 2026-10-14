@@ -798,6 +798,8 @@ def generate_ticks(config: TrackingConfig, layout: dict[str, Any], inventory: To
             records += sim.minute_records(ts, now, reporting)
             if reporting:
                 records += sim.ground_minute_records(ts, now)
+            elif sim.ground is not None:
+                sim.ground.reset_window()   # warm-up: the first reported minute counts only that minute
         if reporting:
             yield now, records
 

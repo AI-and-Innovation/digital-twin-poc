@@ -46,6 +46,7 @@ class GroundTests(unittest.TestCase):
             for r in of_type(records, "curb.occupancy"):
                 p = r.payload
                 self.assertLessEqual(p["occupied"], p["capacity"], p["facility_id"])
+                self.assertLessEqual(p["arrivals"], p["capacity"] + 60, p)   # one minute's worth, not the warm-up
                 if p["facility_type"] != "car_park":
                     self.assertEqual(p["occupied"], vehicles.get(p["facility_id"], 0), p["facility_id"])
 

@@ -800,9 +800,13 @@ class GroundSimulation:
                         "vehicles_queuing": queuing, "arrivals": f.arrivals, "departures": f.departures,
                         "avg_dwell_seconds": round(f.dwell_sum / f.dwell_n, 1) if f.dwell_n else None,
                         "max_dwell_seconds": f.max_dwell_s or None, "overstays": overstays, "status": status})
+        self.reset_window()
+        return out
+
+    def reset_window(self) -> None:
+        for f in self.facilities.values():
             f.arrivals = f.departures = f.dwell_n = 0
             f.dwell_sum = 0.0
-        return out
 
     def road_payloads(self, window_start: datetime, window_end: datetime) -> list[dict]:
         groups: dict[str, list[Vehicle]] = {}
