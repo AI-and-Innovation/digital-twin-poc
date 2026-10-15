@@ -8,6 +8,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from . import airports
 from .common import load_summary
 from .config import load_config
 from .models import EventEnvelope
@@ -70,6 +71,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--scenario", help="Named scenario from the tracking config, e.g. 'peak' (busy at any hour)")
         p.add_argument("--feeds", default="all",
                        help="Which feed groups to send: passengers, landside, airside (comma-separated) or all")
+        airports.add_argument(p)
     pax_stream.add_argument("--config", default="config/poc.json", help="Kafka settings are read from this config")
     pax_stream.add_argument("--bootstrap", help="Override bootstrap servers (or set KAFKA_BOOTSTRAP_SERVERS)")
     pax_stream.add_argument("--no-create-topics", action="store_true")
@@ -80,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
                             help="Seconds between position batches (must divide 60; default from the tracking config, 5). "
                                  "15 or 30 cuts the position volume on a shared cluster")
     pax_files.add_argument("--out", default="output", help="Folder for the files (default: output)")
+    pax_files.add_argument("--interval", type=int,
+                           help="Seconds between position records (must divide 60; default 5). 30 keeps files small")
     pax_files.add_argument("--live", action="store_true",
                            help="Run in real time and rewrite passenger_positions_latest.csv/.geojson every interval")
     pax_files.add_argument("--history", action="store_true",
@@ -87,6 +91,8 @@ def main(argv: list[str] | None = None) -> int:
     pax_files.add_argument("--position-history", action="store_true",
                            help="--live only: also append every position batch to passenger_positions_history.csv (large)")
     args = parser.parse_args(argv)
+    if getattr(args, "airport", None):
+        airports.apply(args)
     try:
         if args.command == "publish":
             return _publish(args)
@@ -229,7 +235,10 @@ def _pax_stream(args: argparse.Namespace) -> int:
     else:
         config = load_config(args.config)
         overrides = {"bootstrap.servers": args.bootstrap} if args.bootstrap else None
-        publisher = KafkaPublisher(config.kafka, fmt="esri", locator=locator, overrides=overrides)
+        kafka = config.kafka
+        if args.airport != "hyd":   # keep each airport's local topics apart
+            kafka = kafka.model_copy(update={"topic_prefix": airports.AIRPORTS[args.airport]["kafka_prefix"]})
+        publisher = KafkaPublisher(kafka, fmt="esri", locator=locator, overrides=overrides)
         print(f"Kafka: {publisher.producer_settings()['bootstrap.servers']}  topic: {publisher.topic_for_type('passenger.position')}")
     try:
         run_tracking_stream(args.tracking_config, publisher, minutes=args.minutes, speed=args.speed,
@@ -249,7 +258,7 @@ def _pax_files(args: argparse.Namespace) -> int:
     if not args.live:
         paths, count = write_tracking_range(args.tracking_config, locator, args.out, start=args.start,
                                             minutes=args.minutes, scenario=args.scenario,
-                                            feeds=select_feeds(args.feeds))
+                                            feeds=select_feeds(args.feeds), interval=args.interval)
         print(f"Wrote {count} records:")
         for path in paths:
             print(f"  {path}")

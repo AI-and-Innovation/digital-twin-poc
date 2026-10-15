@@ -241,6 +241,7 @@ class StandUse:
 class GroundSimulation:
     def __init__(self, sim, layout: dict[str, Any], config: GroundConfig, seed: str):
         self.sim, self.layout, self.config = sim, layout, config
+        self.P = sim.config.id_prefix
         self.rng = random.Random(f"{seed}:ground")
         self.frame = LocalFrame.from_dict(layout["frame"])
         self.land = RoadGraph(layout, "landside")
@@ -258,12 +259,12 @@ class GroundSimulation:
             f.parked = int(p["capacity"] * config.car_park_initial_share)
             f.entry = (cx, cy)
             self.facilities[f.facility_id] = f
-        self.kerb_for = {("drop_off", "private_car"): "SYN-HYD-KERB-DEP-PRIVATE",
-                         ("drop_off", "app_cab"): "SYN-HYD-KERB-DEP-COMMERCIAL",
-                         ("drop_off", "taxi"): "SYN-HYD-KERB-DEP-COMMERCIAL",
-                         ("pick_up", "private_car"): "SYN-HYD-KERB-ARR-PRIVATE",
-                         ("pick_up", "app_cab"): "SYN-HYD-KERB-ARR-CAB",
-                         ("pick_up", "taxi"): "SYN-HYD-KERB-ARR-CAB"}
+        self.kerb_for = {("drop_off", "private_car"): f"{self.P}-KERB-DEP-PRIVATE",
+                         ("drop_off", "app_cab"): f"{self.P}-KERB-DEP-COMMERCIAL",
+                         ("drop_off", "taxi"): f"{self.P}-KERB-DEP-COMMERCIAL",
+                         ("pick_up", "private_car"): f"{self.P}-KERB-ARR-PRIVATE",
+                         ("pick_up", "app_cab"): f"{self.P}-KERB-ARR-CAB",
+                         ("pick_up", "taxi"): f"{self.P}-KERB-ARR-CAB"}
         self.entries = layout["entries"]
         self.exits = layout["exits"]
         self.stands = {s["stand_id"]: s for s in layout["stands"]}
@@ -279,7 +280,7 @@ class GroundSimulation:
         self.parties_by_pax: dict[str, Party] = {}
         self.tasks: list[Task] = []
         self.bus_pickups: deque = deque()          # (time, pax) arrival passengers heading for the RTC bus
-        dom_depot, int_depot = "SYN-HYD-GSE-DEPOT-EAST", "SYN-HYD-GSE-DEPOT-WEST"
+        dom_depot, int_depot = f"{self.P}-GSE-DEPOT-EAST", f"{self.P}-GSE-DEPOT-WEST"
         for kind, count in config.gse_fleet.items():
             for i in range(count):
                 depot = int_depot if i % 3 == 2 else dom_depot   # a third of each fleet based west
@@ -309,7 +310,7 @@ class GroundSimulation:
         return next(iter(shares))
 
     def _side(self) -> str:
-        return self.rng.choice(("east", "west"))
+        return self.rng.choice(sorted(self.entries))   # entry/exit names from the layout ("east", "west" at HYD)
 
     # -- passengers in: departures ----------------------------------------------
     def add_departures(self, flight, arrivals: list[tuple[float, Any]]) -> list[tuple[float, Any]]:
@@ -473,7 +474,7 @@ class GroundSimulation:
         while self.next_bus - 180 <= now:   # set off ~3 minutes before the stop time
             stop_time = self.next_bus
             riders = self._bus_riders.pop(stop_time, [])
-            self._spawn_landside("bus", now, [("kerb", "SYN-HYD-KERB-BUS", "bus"), self._exit_plan()],
+            self._spawn_landside("bus", now, [("kerb", f"{self.P}-KERB-BUS", "bus"), self._exit_plan()],
                                  passengers=riders)
             self.next_bus += every
 
@@ -774,7 +775,7 @@ class GroundSimulation:
             overstay = bool(f.max_dwell_s and dwell > f.max_dwell_s)
         return {"vehicle_id": v.vehicle_id, "vehicle_type": v.vehicle_type, "domain": v.domain,
                 "lat": lat, "lon": lon, "floor": v.level, "x": round(v.x, 1), "y": round(v.y, 1),
-                "speed_kmh": speed, "heading_deg": round(v.heading, 1) % 360, "state": v.state,
+                "speed_kmh": speed, "heading_deg": round(v.heading + self.frame.rotation_deg, 1) % 360, "state": v.state,
                 "road_name": v.road or None, "facility_id": v.facility_id, "stand_id": v.stand_id,
                 "flight_id": v.flight_id, "task": v.task.kind if v.task is not None else None,
                 "passengers_on_board": len(v.passengers),
@@ -847,7 +848,7 @@ class GroundSimulation:
             slug = "".join(ch if ch.isalnum() else "-" for ch in name.upper()).strip("-")
             while "--" in slug:
                 slug = slug.replace("--", "-")
-            r["road_id"] = f"SYN-HYD-ROAD-{slug}"[:64]
+            r["road_id"] = f"{self.P}-ROAD-{slug}"[:64]
         self._roads = {k: v for k, v in roads.items()
                        if v["length"] > 50 and "Terminal 2" not in k and not k.startswith("T2 ")}
         return self._roads

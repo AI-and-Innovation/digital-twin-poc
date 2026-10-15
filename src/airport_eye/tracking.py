@@ -232,9 +232,16 @@ PositionFileWriter = TwinFileWriter
 
 def write_tracking_range(config_path: str | Path, locator: ZoneLocator, out_dir: str | Path, *,
                          start: datetime | None = None, minutes: float | None = None,
-                         scenario: str | None = None, feeds: tuple[str, ...] = FEEDS) -> tuple[list[Path], int]:
+                         scenario: str | None = None, feeds: tuple[str, ...] = FEEDS,
+                         interval: int | None = None) -> tuple[list[Path], int]:
     """Simulate a time range and write the chosen feeds: a CSV and a JSONL (one Kafka message per line) each."""
     config, layout, inventory, _ = load_tracking(config_path, scenario)
+    if interval:
+        if interval <= 0 or 60 % interval:
+            raise ValueError("interval must divide 60 (5, 10, 15, 20, 30 or 60 seconds)")
+        private = (config._targets, config._ground_layout)
+        config = config.model_copy(update={"interval_seconds": interval})
+        config._targets, config._ground_layout = private
     begin, end = _window(config, start, minutes, live=False)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)

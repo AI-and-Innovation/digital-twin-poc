@@ -295,7 +295,9 @@ def layout_geojson(path: str) -> dict:
     touchpoints = {}
     for tp_id, t in layout["touchpoints"].items():
         lon, lat = frame.to_wgs84(t["x"], t["y"])
-        dx, dy = t["queue_direction"]
+        qx, qy = t["queue_direction"]   # local axes -> east/north (the frame may be rotated, e.g. Delhi)
+        rot = math.radians(frame.rotation_deg)
+        dx, dy = qx * math.cos(rot) + qy * math.sin(rot), -qx * math.sin(rot) + qy * math.cos(rot)
         norm = math.hypot(dx, dy) or 1.0
         touchpoints[tp_id] = {"lon": lon, "lat": lat, "floor": t["floor"], "dir": [dx / norm, dy / norm],
                               "width_m": t["service_width_m"], "per_row": max(2, int(min(t["service_width_m"], 30) / 0.75))}
@@ -332,7 +334,7 @@ def ground_geojson(path: str) -> dict | None:
             "apron_roads": apron}
 
 
-def make_handler(state: TwinState, layout: dict | None, ground: dict | None = None):
+def make_handler(state: TwinState, layout: dict | None, ground: dict | None = None, airport: dict | None = None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_args):  # keep the console quiet
             pass
@@ -360,6 +362,8 @@ def make_handler(state: TwinState, layout: dict | None, ground: dict | None = No
                 return self._json(state.track(query.get("id", [""])[0]))
             if url.path == "/api/ground":
                 return self._json(ground or {}, 200 if ground else 404)
+            if url.path == "/api/airport":
+                return self._json(airport or {})
             if url.path == "/api/layout":
                 return self._json(layout or {}, 200 if layout else 404)
             rel = "index.html" if url.path in ("/", "") else url.path.lstrip("/")
@@ -387,7 +391,13 @@ def main() -> None:
     ap.add_argument("--replay-seconds", type=float, default=1.0, help="seconds per simulated minute in --file mode")
     ap.add_argument("--port", type=int, default=8080)
     ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--airport", choices=["del", "hyd"], default="hyd",
+                    help="hyd = RGIA Terminal 1 (default); del = Delhi IGI Terminal 3 (config/del/)")
     args = ap.parse_args()
+    from airport_eye import airports
+    airports.apply(args)
+    if args.airport != "hyd" and args.topic_prefix == PREFIX:
+        args.topic_prefix = airports.AIRPORTS[args.airport]["kafka_prefix"] + ".esri."
 
     state = TwinState()
     try:
@@ -404,7 +414,8 @@ def main() -> None:
         worker = threading.Thread(target=consume_kafka, args=(state, args.bootstrap, topics, args.from_beginning, group),
                                   daemon=True)
     worker.start()
-    server = ThreadingHTTPServer((args.host, args.port), make_handler(state, layout, ground_geojson(args.ground)))
+    server = ThreadingHTTPServer((args.host, args.port), make_handler(state, layout, ground_geojson(args.ground),
+                                                                    airports.VIEWS[args.airport]))
     print(f"Dashboard: http://{args.host}:{args.port}   (Ctrl-C to stop)")
     try:
         server.serve_forever()

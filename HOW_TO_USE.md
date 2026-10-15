@@ -101,6 +101,9 @@ activity (five more feeds; **Kerbside** and **Airside** tabs on the dashboard). 
 `--feeds passengers|landside|airside|all`.
 Details and every field: `docs/PASSENGER_TRACKING.md` (sections 5 and 5c).
 
+**Delhi (DIAL, IGI Terminal 3):** the same feeds for Delhi, kept separate in `config/del/`. Add `--airport del`
+to `pax-files`, `pax-stream` or `scripts/map_viewer.py`. See `docs/DELHI.md`.
+
 ### See the live data
 
 - **Map:** <http://127.0.0.1:8080>. The list on the left shows each touchpoint's queue length and estimated

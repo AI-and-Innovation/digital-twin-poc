@@ -50,10 +50,9 @@ ARRIVALS = ("domestic_arrival", "international_arrival", "ga_arrival")
 FLIGHT_PREFIX = {"domestic_departure": "DD", "international_departure": "ID", "ga_departure": "GD",
                  "domestic_arrival": "DA", "international_arrival": "IA", "ga_arrival": "GA"}
 # Completing one of these puts a departing passenger airside.
-AIRSIDE_TOUCHPOINTS = {"SYN-HYD-SECURITY-DOM", "SYN-HYD-SECURITY-PRM", "SYN-HYD-EMIGRATION",
-                       "SYN-HYD-EMIGRATION-EGATE", "SYN-HYD-EMIGRATION-PRM", "SYN-HYD-GA-SECURITY"}
+AIRSIDE_TOUCHPOINTS = {"SECURITY-DOM", "SECURITY-PRM", "EMIGRATION",   # after the id prefix
+                       "EMIGRATION-EGATE", "EMIGRATION-PRM", "GA-SECURITY"}
 ACTIVITIES = ("walking", "queuing", "in_service", "dwelling", "at_gate", "reclaim")
-KPI_ID = "HYD-T1-JOURNEYS"
 SOURCE = "synthetic-passenger-tracker"
 
 
@@ -95,6 +94,9 @@ class TrackingConfig(Model):
     warmup_from_local_midnight: bool = True
     warmup_step_seconds: int = Field(default=30, gt=0)
     timezone: NonEmpty = "Asia/Kolkata"
+    id_prefix: NonEmpty = "SYN-HYD"            # touchpoint, zone, kerb and gate ids: <prefix>-<name>
+    terminal_id: NonEmpty = "HYD-MAIN"
+    kpi_id: NonEmpty = "HYD-T1-JOURNEYS"
     seed: int
     layout_file: NonEmpty
     inventory_file: NonEmpty
@@ -270,6 +272,7 @@ class TerminalSimulation:
     def __init__(self, config: TrackingConfig, layout: dict[str, Any], inventory: TouchpointInventory,
                  start: datetime, end: datetime):
         self.config, self.layout, self.inventory = config, layout, inventory
+        self.P = config.id_prefix
         # Two streams: the schedule (flights, passengers, plans) and motion (walk targets,
         # service times). Neither depends on the end time, so a longer run of the same
         # start replays the same tracks.
@@ -278,6 +281,7 @@ class TerminalSimulation:
         self.local = ZoneInfo(config.timezone)
         self.graph = WalkGraph.from_layout(layout)
         self.frame_id = layout["frame"]["frame_id"]
+        self.rotation = layout["frame"].get("rotation_deg", 0.0)   # local heading -> compass heading
         self.floor_z = {name: f["z"] for name, f in layout["floors"].items()}
         self.zones_by_floor: dict[str, list[tuple[str, list]]] = {}
         self.zone_info: dict[str, dict[str, Any]] = {}
@@ -301,7 +305,7 @@ class TerminalSimulation:
                                        spot["service_width_m"], channels,
                                        (sim.service_time_min_seconds, sim.service_time_max_seconds), tp_id)
         b = config.boarding
-        board_tp = {"dom": "SYN-HYD-BOARDING-DOM", "int": "SYN-HYD-BOARDING-INT"}
+        board_tp = {"dom": f"{self.P}-BOARDING-DOM", "int": f"{self.P}-BOARDING-INT"}
         for gate in layout["gates"]:
             # the gate's walkway link points into the pier: queues and the holding area go that way
             node = self.graph.nodes[self.graph.adjacency[gate["gate_id"]][0][0]]
@@ -434,25 +438,25 @@ class TerminalSimulation:
             city = domestic and rng.random() < s["domestic_city_checkin"]
             if city:
                 start_area = "city_parking"
-                plan.append(("tp", "SYN-HYD-CITY-CHECKIN"))
-            plan.append(("tp", "SYN-HYD-PRM-ENTRY" if prm else
-                         "SYN-HYD-DIGIYATRA-ENTRY" if rng.random() < s["digiyatra_entry"] else "SYN-HYD-ENTRY"))
+                plan.append(("tp", f"{self.P}-CITY-CHECKIN"))
+            plan.append(("tp", f"{self.P}-PRM-ENTRY" if prm else
+                         f"{self.P}-DIGIYATRA-ENTRY" if rng.random() < s["digiyatra_entry"] else f"{self.P}-ENTRY"))
             if not city:
                 r = rng.random()
                 web = s["domestic_web_checkin_no_bags" if domestic else "international_web_checkin_no_bags"]
                 kiosk = s["domestic_kiosk" if domestic else "international_kiosk"]
                 suffix = "DOM" if domestic else "INT"
                 if r < kiosk:
-                    plan += [("tp", f"SYN-HYD-KIOSK-{suffix}"), ("tp", f"SYN-HYD-BAGDROP-{suffix}")]
+                    plan += [("tp", f"{self.P}-KIOSK-{suffix}"), ("tp", f"{self.P}-BAGDROP-{suffix}")]
                 elif r >= kiosk + web:
-                    plan.append(("tp", f"SYN-HYD-CHECKIN-{suffix}"))
+                    plan.append(("tp", f"{self.P}-CHECKIN-{suffix}"))
             if domestic:
-                plan.append(("tp", "SYN-HYD-SECURITY-PRM" if prm else "SYN-HYD-SECURITY-DOM"))
+                plan.append(("tp", f"{self.P}-SECURITY-PRM" if prm else f"{self.P}-SECURITY-DOM"))
             else:
-                plan.append(("tp", "SYN-HYD-SECURITY-INT"))
-                plan.append(("tp", "SYN-HYD-EMIGRATION-PRM" if prm else
-                             "SYN-HYD-EMIGRATION-EGATE" if rng.random() < s["emigration_egate"] else
-                             "SYN-HYD-EMIGRATION"))
+                plan.append(("tp", f"{self.P}-SECURITY-INT"))
+                plan.append(("tp", f"{self.P}-EMIGRATION-PRM" if prm else
+                             f"{self.P}-EMIGRATION-EGATE" if rng.random() < s["emigration_egate"] else
+                             f"{self.P}-EMIGRATION"))
             b = cfg.boarding
             opens = flight.time - b.opens_before_departure_minutes * 60
             closes = flight.time - b.closes_before_departure_minutes * 60
@@ -460,20 +464,20 @@ class TerminalSimulation:
             plan.append(("dwell_until", opens - rng.uniform(0, 20) * 60, "dwelling", None))
             plan.append(("gate", flight.gate_id, rng.uniform(opens, closes)))
         elif journey == "ga_departure":
-            plan += [("tp", "SYN-HYD-GA-CHECK-IN"), ("tp", "SYN-HYD-GA-SECURITY"), ("area", "ga_airside"),
+            plan += [("tp", f"{self.P}-GA-CHECK-IN"), ("tp", f"{self.P}-GA-SECURITY"), ("area", "ga_airside"),
                      ("end", "boarded")]
         elif journey == "ga_arrival":
-            plan += [("tp", "SYN-HYD-GA-IMMIGRATION"), ("tp", "SYN-HYD-GA-CUSTOMS"), ("area", "ga_landside"),
+            plan += [("tp", f"{self.P}-GA-IMMIGRATION"), ("tp", f"{self.P}-GA-CUSTOMS"), ("area", "ga_landside"),
                      ("end", "exited")]
         else:
             domestic = journey == "domestic_arrival"
             if not domestic:
-                plan.append(("tp", "SYN-HYD-IMMIGRATION-EGATE" if rng.random() < s["immigration_egate"]
-                             else "SYN-HYD-IMMIGRATION"))
+                plan.append(("tp", f"{self.P}-IMMIGRATION-EGATE" if rng.random() < s["immigration_egate"]
+                             else f"{self.P}-IMMIGRATION"))
             plan.append(("area", "dom_reclaim" if domestic else "int_reclaim"))
             if rng.random() < s["arrival_checked_bags"]:
                 plan.append(("dwell_for", rng.uniform(*cfg.reclaim_wait_minutes) * 60, "reclaim",
-                             "SYN-HYD-RECLAIM-DOM" if domestic else "SYN-HYD-RECLAIM-INT"))
+                             f"{self.P}-RECLAIM-DOM" if domestic else f"{self.P}-RECLAIM-INT"))
             plan += [("area", "arrivals_hall"),
                      ("dwell_for", rng.uniform(*cfg.arrivals_hall_dwell_minutes) * 60, "dwelling", None),
                      ("area", "arrivals_exit"), ("end", "exited")]
@@ -592,7 +596,7 @@ class TerminalSimulation:
                 if queue.queue_id in self.gates:
                     self._finish(pax, "boarded", ended)
                     continue
-                if queue.touchpoint_id in AIRSIDE_TOUCHPOINTS and pax.journey in DEPARTURES:
+                if queue.touchpoint_id.removeprefix(self.P + "-") in AIRSIDE_TOUCHPOINTS and pax.journey in DEPARTURES:
                     pax.airside_at = ended
                     self.ev_airside.append((ended, (ended - pax.spawned_at) / 60))
                 pax.x, pax.y = queue.exit_point()
@@ -643,7 +647,7 @@ class TerminalSimulation:
         for zone_id, polygons in self.zones_by_floor.get(floor, []):
             if any(point_in_polygon(x, y, p) for p in polygons):
                 return zone_id
-        return "SYN-HYD-ZONE-OUTSIDE"
+        return f"{self.P}-ZONE-OUTSIDE"
 
     def _envelope(self, event_type: str, entity: str, when: datetime, payload: dict[str, Any]) -> EventEnvelope:
         sequence = self.sequences[entity]
@@ -651,7 +655,7 @@ class TerminalSimulation:
         return EventEnvelope.model_construct(
             event_id=uuid5(NAMESPACE_URL, f"airport-eye:{event_type}:{self.start.isoformat()}:{entity}:{sequence}"),
             event_type=event_type, schema_version="1.0.0", airport_id=self.inventory.airport_id,
-            terminal_id="HYD-MAIN", source_system=SOURCE, entity_id=entity,
+            terminal_id=self.config.terminal_id, source_system=SOURCE, entity_id=entity,
             event_time=when, ingestion_time=when, sequence_no=sequence, payload=payload)
 
     def record(self, pax: Passenger, when: datetime) -> EventEnvelope:
@@ -662,7 +666,7 @@ class TerminalSimulation:
             "indoor": {"coordinate_frame_id": self.frame_id, "x": round(pax.x, 2), "y": round(pax.y, 2),
                        "z": self.floor_z.get(pax.floor, 0.0), "floor": pax.floor, "zone_id": pax.zone,
                        "grid_id": f"{pax.floor}-{math.floor(pax.x / 5)}-{math.floor(pax.y / 5)}"},
-            "speed_mps": speed, "heading_deg": round(pax.heading, 1) % 360,
+            "speed_mps": speed, "heading_deg": round(pax.heading + self.rotation, 1) % 360,
             "movement_state": "walking" if speed > 0.05 else "stationary",
             "journey": pax.journey, "activity": pax.activity, "touchpoint_id": pax.touchpoint_id,
             "gate_id": pax.flight.gate_id,
@@ -743,7 +747,7 @@ class TerminalSimulation:
         waits = [(p.get("estimated_wait_seconds") or 0, p["touchpoint_id"]) for p in tp_payloads]
         longest = max(waits, default=(None, None))
         payload = PassengerJourneyKpi(
-            kpi_id=KPI_ID, window_start=window_start, window_end=when,
+            kpi_id=self.config.kpi_id, window_start=window_start, window_end=when,
             rolling_window_minutes=self.config.kpi_rolling_minutes,
             people_in_terminal=len(people),
             people_departing=sum(p.journey in DEPARTURES for p in people),
@@ -762,7 +766,7 @@ class TerminalSimulation:
             touchpoints_busy=sum(p.get("status") == "busy" for p in tp_payloads),
             touchpoints_congested=sum(p.get("status") == "congested" for p in tp_payloads),
         ).model_dump(mode="json")
-        records.append(self._envelope("passenger.journey_kpi", KPI_ID, when, payload))
+        records.append(self._envelope("passenger.journey_kpi", self.config.kpi_id, when, payload))
         return records
 
 

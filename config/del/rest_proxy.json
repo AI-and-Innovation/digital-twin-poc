@@ -1,0 +1,18 @@
+{
+ "_note": "Kafka REST Proxy (v2) target for the Delhi T3 terminal simulation. Topic names follow the cluster's aiop-<airport>-topic-<domain>-event-<tier>-v<n> pattern and must exist before publishing (the v2 proxy cannot create topics). Credentials are NOT stored here: set KAFKA_REST_USER and KAFKA_REST_PASSWORD; KAFKA_REST_URL overrides the URL.",
+ "url": "https://dev-aop-kafka-rest-proxy.wdplatform.com",
+ "topics": {
+  "passenger.position": "aiop-del-topic-pax-position-event-silver-v1",
+  "passenger.touchpoint": "aiop-del-topic-pax-queue-event-gold-v1",
+  "passenger.aggregate": "aiop-del-topic-pax-zone-event-gold-v1",
+  "passenger.journey_kpi": "aiop-del-topic-pax-journey-kpi-event-gold-v1",
+  "vehicle.position": "aiop-del-topic-veh-position-event-silver-v1",
+  "curb.occupancy": "aiop-del-topic-curb-occupancy-event-gold-v1",
+  "road.traffic": "aiop-del-topic-road-traffic-event-gold-v1",
+  "gse.position": "aiop-del-topic-gse-position-event-silver-v1",
+  "stand.activity": "aiop-del-topic-stand-activity-event-gold-v1"
+ },
+ "records_per_request": 500,
+ "timeout_seconds": 30,
+ "retries": 3
+}

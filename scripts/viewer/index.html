@@ -106,7 +106,7 @@
 <body>
 <div class="top">
   <div class="brand">
-    <h1>AirportEye - RGIA Terminal 1 operations</h1>
+    <h1 id="title">AirportEye - RGIA Hyderabad Terminal 1 operations</h1>
     <div class="sub">Local view of the Esri feeds. Synthetic passengers. Not an Esri product.</div>
   </div>
   <div class="status"><span class="dot" id="dot"></span><span id="statusText">Connecting...</span> <span class="clock" id="clock"></span></div>
@@ -177,7 +177,7 @@
     <div class="pane" id="pane-how">
       <div class="section">
         <h3>What you are looking at</h3>
-        <p>A simulation of Terminal 1 that produces the same records real sensors and an Esri pipeline would. Every number on this page comes from the same simulated passengers, so the queue counts, zone counts and dots always agree.</p>
+        <p>A simulation of the terminal that produces the same records real sensors and an Esri pipeline would. Every number on this page comes from the same simulated passengers, so the queue counts, zone counts and dots always agree.</p>
         <div class="flow">
           <div class="box"><b>1. Passengers</b>Flights create passengers. They walk the terminal's walkways, queue at entry, check-in, security and immigration, dwell airside, board, or collect bags and leave.</div>
           <div class="arrow">&darr;</div>
@@ -227,7 +227,7 @@
   var FOLLOW_HINT = '<div class="hint">Click on or next to a passenger dot on the map to follow them through the terminal. Their path is drawn on the map and their journey appears here.</div>';
 
   function esc(s) { return String(s === null || s === undefined ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
-  function nice(id) { return id ? String(id).replace(/^SYN-HYD-/, "").replace(/^ZONE-/, "") : "-"; }
+  function nice(id) { return id ? String(id).replace(/^SYN-[A-Z]{3}-/, "").replace(/^ZONE-/, "") : "-"; }
   function secs(v) { return v === null || v === undefined ? "-" : (v >= 90 ? (v / 60).toFixed(1) + " min" : Math.round(v) + " s"); }
   function mins(v) { return v === null || v === undefined ? "-" : v.toFixed(1) + " min"; }
   function hhmm(ms) { if (!ms) return ""; return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); }
@@ -235,7 +235,15 @@
   function $(id) { return document.getElementById(id); }
 
   // ---- map and layers ----
+  var VIEW = { center: [78.4290, 17.2356] };
   var map = L.map("map", { zoomControl: true, preferCanvas: true }).setView([17.2356, 78.4290], 17);
+  fetch("api/airport").then(function (r) { return r.ok ? r.json() : null; }).then(function (a) {
+    if (!a || !a.center) return;
+    VIEW = a;
+    $("title").textContent = "AirportEye - " + a.airport + " " + a.terminal + " operations";
+    document.title = "AirportEye " + a.airport + " " + a.terminal;
+    if (!fitted) map.setView([a.center[1], a.center[0]], 16);
+  }).catch(function () {});
   ["zones", "heat", "trail", "touch", "pax"].forEach(function (p, i) { map.createPane(p).style.zIndex = 400 + i * 10; });
   map.createPane("ground").style.zIndex = 395;
   map.createPane("veh").style.zIndex = 455;
@@ -561,7 +569,7 @@
     if (!show.heat) return;
     var iF = idx("floor"), iX = idx("longitude"), iY = idx("latitude");
     var cell = map.getZoom() >= 18 ? 5 : 10, scale = cell === 5 ? 1 : 4; // people per cell scale with cell area
-    var dLat = cell / 110574, dLon = cell / (111320 * Math.cos(17.2355 * Math.PI / 180)), bins = {};
+    var dLat = cell / 110574, dLon = cell / (111320 * Math.cos(VIEW.center[1] * Math.PI / 180)), bins = {};
     data.positions.rows.forEach(function (r) {
       if (r[iF] !== floor) return;
       var key = Math.floor(r[iY] / dLat) + ":" + Math.floor(r[iX] / dLon);
@@ -683,7 +691,7 @@
       m.setStyle({ fillColor: LEVEL[st.status] || LEVEL.vacant }).setTooltipContent("<b>" + esc(st.osm_ref || nice(st.stand_id)) + "</b>" + (st.flight_id ? "<br>" + esc(st.flight_id) + " &middot; " + human(st.phase) + "<br>" + st.vehicles_present + " vehicles &middot; tasks " + st.tasks_done + "/" + st.tasks_total + (st.tasks_late ? " (" + st.tasks_late + " late)" : "") : "<br>vacant"));
       if (st.status === "delayed") { delayed++; alerts.push('<div class="alert-row"><span class="pill" style="background:' + LEVEL.delayed + '">stand</span><span><b>' + esc(st.osm_ref || nice(st.stand_id)) + "</b> (" + esc(st.flight_id) + "): " + st.tasks_late + " turnaround tasks late</span></div>"); }
     });
-    var dep = curbs.filter(function (c) { return c.facility_id === "SYN-HYD-KERB-DEP-PRIVATE"; })[0];
+    var dep = curbs.filter(function (c) { return /-KERB-DEP-PRIVATE$/.test(c.facility_id); })[0];
     $("kKerb").textContent = dep ? Math.round(dep.occupancy_pct) + "%" : "-";
     $("kStands").textContent = stands.length ? delayed + " / " + activeStands.length : "-";
     $("standTile").classList.toggle("alert", delayed > 0);

@@ -1,0 +1,120 @@
+{
+ "_note": "Operational targets and benchmarks for the passenger queue feed. Recommended targets come from the operations guidance shared by Krishna (starting points for a digital twin, NOT published Hyderabad SLAs or measured RGIA performance). AERA columns are regulatory benchmarks and must stay separate from the operating targets. The August 2025 AERA values are a consultation PROPOSAL, not an enacted SLA (no final notification was found as of 8 Oct 2026). Wait = joining the queue to starting service. Targets apply to at least 95% of passengers.",
+ "p95_window_minutes": 30,
+ "p95_min_samples": 5,
+ "busy_ratio": 0.6,
+ "classes": {
+  "entry_manual": {
+   "label": "Terminal entry - manual ticket/ID check",
+   "target_wait_minutes": 3,
+   "aera_existing_minutes": null,
+   "aera_proposed_minutes": 10,
+   "processing_assumption": "15-30 s/passenger"
+  },
+  "entry_digiyatra": {
+   "label": "Terminal entry - Digi Yatra",
+   "target_wait_minutes": 1,
+   "aera_existing_minutes": null,
+   "aera_proposed_minutes": 5,
+   "processing_assumption": "5-15 s/passenger"
+  },
+  "checkin_economy": {
+   "label": "Check-in - economy, staffed counter",
+   "target_wait_minutes": 10,
+   "aera_existing_minutes": 20,
+   "aera_proposed_minutes": 20,
+   "processing_assumption": "domestic 2-3 min, international 3-5 min/passenger"
+  },
+  "security": {
+   "label": "Security screening",
+   "target_wait_minutes": 5,
+   "aera_existing_minutes": 5,
+   "aera_proposed_minutes": 10,
+   "processing_assumption": "2-4 min whole journey; use lane throughput, not journey time"
+  },
+  "immigration_manual": {
+   "label": "Arrival immigration - manual",
+   "target_wait_minutes": 7,
+   "aera_existing_minutes": 10,
+   "aera_proposed_minutes": 12,
+   "processing_assumption": "1-2 min/passenger"
+  },
+  "boarding": {
+   "label": "Boarding gate",
+   "target_wait_minutes": null,
+   "aera_existing_minutes": null,
+   "aera_proposed_minutes": null,
+   "processing_assumption": "no target in the guidance received"
+  }
+ },
+ "iata_reference_minutes": {
+  "economy_checkin": 12,
+  "business_checkin": 3,
+  "security": 3,
+  "outbound_passport_control": 5,
+  "inbound_passport_control": 7,
+  "note": "IATA 2015 planning guidance (short-to-acceptable maximum waits); industry guidance, not Indian regulation. Reference only, not emitted."
+ },
+ "touchpoints": {
+  "SYN-DEL-ENTRY": {
+   "class": "entry_manual",
+   "flow": "all",
+   "basis": "recommended"
+  },
+  "SYN-DEL-DIGIYATRA-ENTRY": {
+   "class": "entry_digiyatra",
+   "flow": "digiyatra",
+   "basis": "recommended"
+  },
+  "SYN-DEL-PRM-ENTRY": {
+   "class": "entry_manual",
+   "flow": "priority",
+   "basis": "assumed_from_similar"
+  },
+  "SYN-DEL-CHECKIN-DOM": {
+   "class": "checkin_economy",
+   "flow": "domestic",
+   "basis": "recommended"
+  },
+  "SYN-DEL-CHECKIN-INT": {
+   "class": "checkin_economy",
+   "flow": "international",
+   "basis": "recommended"
+  },
+  "SYN-DEL-SECURITY-DOM": {
+   "class": "security",
+   "flow": "domestic",
+   "basis": "recommended"
+  },
+  "SYN-DEL-SECURITY-INT": {
+   "class": "security",
+   "flow": "international",
+   "basis": "recommended"
+  },
+  "SYN-DEL-SECURITY-PRM": {
+   "class": "security",
+   "flow": "priority",
+   "basis": "assumed_from_similar"
+  },
+  "SYN-DEL-BOARDING-DOM": {
+   "class": "boarding",
+   "flow": "domestic",
+   "basis": "none"
+  },
+  "SYN-DEL-BOARDING-INT": {
+   "class": "boarding",
+   "flow": "international",
+   "basis": "none"
+  },
+  "SYN-DEL-IMMIGRATION": {
+   "class": "immigration_manual",
+   "flow": "international",
+   "basis": "recommended"
+  },
+  "SYN-DEL-IMMIGRATION-EGATE": {
+   "class": "immigration_manual",
+   "flow": "international",
+   "basis": "assumed_from_similar"
+  }
+ }
+}

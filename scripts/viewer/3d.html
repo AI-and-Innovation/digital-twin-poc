@@ -80,7 +80,7 @@
 <body>
 <aside>
   <div class="head">
-    <h1>Terminal 1 in 3D</h1>
+    <h1 id="title">Terminal 1 in 3D</h1>
     <div class="sub">Departures level above, arrivals below. Drag to pan, right-drag or Ctrl-drag to tilt and rotate. <a href="./">2D dashboard</a></div>
     <div class="status"><span class="dot" id="dot"></span><span id="statusText">Connecting...</span> <b id="clock"></b></div>
     <div class="tiles">
@@ -156,11 +156,13 @@
   var STATUS = { normal: [46, 158, 91], busy: [217, 145, 0], congested: [211, 63, 63], no_target: [138, 148, 166] };
   var RAMP = [[231, 240, 251], [106, 163, 220], [59, 91, 181], [106, 44, 145], [176, 18, 79]];
   var DENSE = 25;
-  var CENTER = [78.4290, 17.2356];
+  var VIEW = { center: [78.4290, 17.2356], zoom: 16.6, bearing: -18, central: [78.4288, 17.2357], central_zoom: 18,
+               central_bearing: -25 };
+  var CENTER = VIEW.center;
 
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s === null || s === undefined ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
-  function nice(id) { return id ? String(id).replace(/^SYN-HYD-/, "").replace(/^ZONE-/, "") : "-"; }
+  function nice(id) { return id ? String(id).replace(/^SYN-[A-Z]{3}-/, "").replace(/^ZONE-/, "") : "-"; }
   function secs(v) { return v === null || v === undefined ? "-" : (v >= 90 ? (v / 60).toFixed(1) + " min" : Math.round(v) + " s"); }
   function hhmm(ms) { return ms ? new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : ""; }
   function ramp(d) { return RAMP[Math.max(0, Math.min(4, Math.floor(d / (DENSE / 4))))]; }
@@ -173,6 +175,13 @@
     center: CENTER, zoom: 16.6, pitch: 58, bearing: -18, maxPitch: 80, antialias: true
   });
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
+  fetch("api/airport").then(function (r) { return r.ok ? r.json() : null; }).then(function (a) {
+    if (!a || !a.center) return;
+    VIEW = a; CENTER = a.center;
+    $("title").textContent = a.airport + " " + a.terminal + " in 3D";
+    document.title = "AirportEye " + a.airport + " 3D";
+    map.jumpTo({ center: a.center, zoom: a.zoom, bearing: a.bearing });
+  }).catch(function () {});
   var overlay = new deck.MapboxOverlay({ interleaved: false, layers: [], getTooltip: null });
   map.addControl(overlay);
 
@@ -215,9 +224,9 @@
   document.querySelectorAll("[data-view]").forEach(function (b) {
     b.onclick = function () {
       var v = b.getAttribute("data-view");
-      if (v === "overview") map.easeTo({ center: CENTER, zoom: 16.6, pitch: 58, bearing: -18, duration: 900 });
-      if (v === "central") map.easeTo({ center: [78.4288, 17.2357], zoom: 18, pitch: 62, bearing: -25, duration: 900 });
-      if (v === "top") map.easeTo({ center: CENTER, zoom: 16.8, pitch: 0, bearing: 0, duration: 900 });
+      if (v === "overview") map.easeTo({ center: VIEW.center, zoom: VIEW.zoom, pitch: 58, bearing: VIEW.bearing, duration: 900 });
+      if (v === "central") map.easeTo({ center: VIEW.central, zoom: VIEW.central_zoom, pitch: 62, bearing: VIEW.central_bearing, duration: 900 });
+      if (v === "top") map.easeTo({ center: VIEW.center, zoom: VIEW.zoom + 0.2, pitch: 0, bearing: 0, duration: 900 });
     };
   });
 
@@ -338,7 +347,7 @@
       }
       if (show.labels && layout.gates && map.getZoom() >= 17.6) {
         over.push(new deck.TextLayer({ id: "gates", data: layout.gates.filter(function (g) { return floorsOn[g.floor]; }),
-          getPosition: function (g) { return [g.lon, g.lat, z(g.floor) + 2]; }, getText: function (g) { return "Gate " + g.gate_id.replace("SYN-HYD-GATE-", ""); },
+          getPosition: function (g) { return [g.lon, g.lat, z(g.floor) + 2]; }, getText: function (g) { return "Gate " + g.gate_id.replace(/^SYN-[A-Z]{3}-GATE-/, ""); },
           getSize: 11, sizeUnits: "pixels", getColor: [24, 32, 43, 255], background: true, getBackgroundColor: [255, 255, 255, 220], backgroundPadding: [4, 2],
           characterSet: "auto" }));
       }
