@@ -1,0 +1,14 @@
+[Unit]
+Description=AirportEye publisher status page
+After=airport-eye-pax.service
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/opt/airport-eye
+ExecStart=/usr/bin/python3.11 /opt/airport-eye/deploy/ec2/publisher_status.py --host 127.0.0.1 --port 8787
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

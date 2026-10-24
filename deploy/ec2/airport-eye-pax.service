@@ -1,0 +1,16 @@
+[Unit]
+Description=AirportEye Hyderabad live publisher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/opt/airport-eye
+EnvironmentFile=/etc/airport-eye.env
+ExecStart=/opt/airport-eye/.venv/bin/airport-eye pax-stream --rest-proxy --feeds all --interval 30 --speed 1
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target
