@@ -1,11 +1,14 @@
 """Run the terminal simulation live (Kafka or files) or for a fixed time range (files).
 
-One simulation, four feeds, all as flat Esri records:
+One simulation, all as flat Esri records:
 
   passenger.position     every 5 s    one per passenger (longitude/latitude from local x/y)
   passenger.touchpoint   every minute queue length, waits, throughput, target status
   passenger.aggregate    every minute occupancy and density per zone
   passenger.journey_kpi  every minute terminal-wide journey times and counts
+  vehicle / curb / road / gse / stand feeds from the ground simulation
+  kpi.checkpoint, kpi.curbside, kpi.overview (every minute) and flight.status (on change): the AE-IT widget
+  cards, when the config has a ``kpi`` section (generators/kpi.py)
 """
 
 from __future__ import annotations
@@ -25,11 +28,22 @@ from .queue_files import _replace, to_csv, to_geojson
 from .spatial import LocalFrame
 from .streaming import floor_to_interval, publish_paced
 
+KPI_FEEDS = ("kpi.checkpoint", "kpi.curbside", "kpi.overview", "flight.status")
 FEEDS = ("passenger.position", "passenger.touchpoint", "passenger.aggregate", "passenger.journey_kpi",
-         "vehicle.position", "curb.occupancy", "road.traffic", "gse.position", "stand.activity")
+         "vehicle.position", "curb.occupancy", "road.traffic", "gse.position", "stand.activity") + KPI_FEEDS
 POSITION_FEEDS = ("passenger.position", "vehicle.position", "gse.position")   # every interval
 FEED_GROUPS = {"passengers": FEEDS[:4], "landside": ("vehicle.position", "curb.occupancy", "road.traffic"),
-               "airside": ("gse.position", "stand.activity")}
+               "airside": ("gse.position", "stand.activity"), "kpis": KPI_FEEDS}
+
+
+def available_feeds(config, feeds: tuple[str, ...]) -> tuple[str, ...]:
+    """Drop the feeds this config cannot produce: vehicle feeds without a ground simulation, KPI cards
+    without a ``kpi`` section."""
+    if config.ground is None:
+        feeds = tuple(f for f in feeds if f in FEED_GROUPS["passengers"] or f in KPI_FEEDS)
+    if getattr(config, "kpi", None) is None:
+        feeds = tuple(f for f in feeds if f not in KPI_FEEDS)
+    return feeds
 
 
 def select_feeds(groups: str | None) -> tuple[str, ...]:
@@ -61,6 +75,21 @@ LEADING = {
                            "event_time", "longitude", "latitude", "floor", "elevation_m", "indoor_zone_id", "indoor_x", "indoor_y",
                            "speed_mps", "heading_deg", "movement_state"],
     "passenger.touchpoint": TOUCHPOINT_COLUMNS,
+    "kpi.checkpoint": ["checkpoint_id", "desk_name", "card", "window_end", "desk_open", "queue_length",
+                       "avg_processing_time_seconds", "avg_wait_time_seconds", "happiness_index", "passengers_served",
+                       "hour_avg_wait_minutes", "previous_hour_avg_wait_minutes", "wait_threshold_minutes",
+                       "longitude", "latitude", "floor"],
+    "kpi.curbside": ["curbside_id", "side", "window_end", "people_count", "live_vehicle_count", "vehicles_this_hour",
+                     "vehicles_vs_previous_hour_pct", "avg_dwell_seconds", "avg_dwell_vs_previous_hour_pct",
+                     "this_hour_private_car", "this_hour_app_cab", "this_hour_taxi", "this_hour_bus",
+                     "trolleys_available", "trolleys_total", "longitude", "latitude"],
+    "kpi.overview": ["overview_id", "scope", "window_end", "arrival_flights", "arrival_vs_schedule_pct",
+                     "departure_flights", "departure_vs_schedule_pct", "stands_occupied", "stands_total", "ota_pct",
+                     "otd_pct", "avg_arrival_delay_minutes", "avg_departure_delay_minutes"],
+    "flight.status": ["flight_id", "direction", "sector", "status", "event_time", "scheduled_time", "estimated_time",
+                      "landing_time", "in_block_time", "off_block_time", "takeoff_time", "delay_minutes", "on_time",
+                      "taxi_minutes", "stand_id", "gate_id", "pax_forecast", "pax_actual", "bags",
+                      "longitude", "latitude"],
     "passenger.aggregate": ["zone_id", "zone_name", "floor", "window_end", "passenger_count", "density_per_100m2",
                             "area_m2", "people_walking", "people_queuing", "people_in_service", "people_dwelling",
                             "people_at_gate", "people_reclaim", "longitude", "latitude", "elevation_m"],
@@ -73,7 +102,9 @@ LEADING = {
 STEMS = {"vehicle.position": "vehicle_positions", "gse.position": "gse_positions", "curb.occupancy": "kerb_occupancy",
          "road.traffic": "road_traffic", "stand.activity": "stand_activity",
          "passenger.position": "passenger_positions", "passenger.touchpoint": "passenger_queues",
-         "passenger.aggregate": "zone_occupancy", "passenger.journey_kpi": "journey_kpis"}
+         "passenger.aggregate": "zone_occupancy", "passenger.journey_kpi": "journey_kpis",
+         "kpi.checkpoint": "kpi_checkpoints", "kpi.curbside": "kpi_curbside", "kpi.overview": "kpi_overview",
+         "flight.status": "flight_status"}
 
 
 def columns_for(event_type: str, record: dict[str, Any]) -> list[str]:
@@ -145,9 +176,15 @@ def run_tracking_stream(config_path: str | Path, publisher: Any, *, minutes: flo
     begin, end = _window(config, start, minutes, live=True)
     log(f"Terminal simulation: positions every {config.interval_seconds}s, queues/zones/journeys every minute, "
         f"speed x{speed:g}; warming up from local midnight first")
-    if config.ground is None:
-        feeds = tuple(f for f in feeds if f in FEED_GROUPS["passengers"])
+    feeds = available_feeds(config, feeds)
     log("Feeds: " + ", ".join(feeds))
+    if create_topics and hasattr(publisher, "missing_topics"):
+        # the KPI topics are new: until they exist, send the other feeds rather than stop everything
+        kpi = {t: publisher.topic_for_type(t) for t in feeds if t in KPI_FEEDS}
+        missing = set(publisher.missing_topics(list(kpi.values()))) if kpi else set()
+        if missing:
+            log("KPI topics not created yet, skipping them for now: " + ", ".join(sorted(missing)))
+            feeds = tuple(f for f in feeds if kpi.get(f) not in missing)
     if create_topics:
         topics = [publisher.topic_for_type(t) for t in feeds]
         created = publisher.ensure_topics(topics)
@@ -212,7 +249,8 @@ class TwinFileWriter:
             names = columns_for(event_type, records[0])
             if event_type == "passenger.aggregate":
                 _replace(self.out_dir / f"{stem}_latest.geojson", json.dumps(zones_geojson(records, self.polygons)))
-            elif event_type in ("passenger.touchpoint", "curb.occupancy", "road.traffic", "stand.activity"):
+            elif event_type in ("passenger.touchpoint", "curb.occupancy", "road.traffic", "stand.activity",
+                                "kpi.checkpoint", "kpi.curbside", "kpi.overview", "flight.status"):
                 _replace(self.out_dir / f"{stem}_latest.geojson", json.dumps(to_geojson(records, names)))
             _replace(self.out_dir / f"{stem}_latest.csv", to_csv(records, names))
             if event_type == "passenger.journey_kpi":
@@ -246,7 +284,7 @@ def write_tracking_range(config_path: str | Path, locator: ZoneLocator, out_dir:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     tag = begin.strftime("%Y%m%dT%H%MZ")
-    feeds = tuple(t for t in FEEDS if t in feeds)
+    feeds = available_feeds(config, tuple(t for t in FEEDS if t in feeds))
     paths = {t: out / f"{STEMS[t]}_{tag}.csv" for t in feeds}
     jsonl_paths = {t: out / f"{STEMS[t]}_{tag}.jsonl" for t in feeds}
     handles = {t: p.open("w", encoding="utf-8", newline="") for t, p in paths.items()}

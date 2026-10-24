@@ -85,7 +85,8 @@ class GroundTests(unittest.TestCase):
 
     def test_feed_groups(self):
         self.assertEqual(select_feeds("landside"), FEED_GROUPS["landside"])
-        self.assertEqual(len(select_feeds("all")), 9)
+        self.assertEqual(len(select_feeds("all")), 13)
+        self.assertEqual(select_feeds("kpis"), ("kpi.checkpoint", "kpi.curbside", "kpi.overview", "flight.status"))
         self.assertEqual(select_feeds("passengers,airside"), FEED_GROUPS["passengers"] + FEED_GROUPS["airside"])
         with self.assertRaises(ValueError):
             select_feeds("trains")

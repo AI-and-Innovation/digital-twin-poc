@@ -127,5 +127,26 @@
     },
     "gse_late_after_seconds": 300,
     "car_park_mean_stay_hours": 72
+  },
+  "kpi": {
+    "airport_name": "RGIA Hyderabad",
+    "terminal_name": "Terminal 1",
+    "checkpoints": [
+      {"touchpoint_id": "SYN-HYD-CHECKIN-DOM", "card": "check_in", "name": "Domestic check-in desk", "desks": [1, 5, 9]},
+      {"touchpoint_id": "SYN-HYD-SECURITY-DOM", "card": "security", "name": "Domestic security lane", "desks": [1, 6]},
+      {"touchpoint_id": "SYN-HYD-EMIGRATION", "card": "passport", "name": "Emigration counter", "desks": [2, 5]}
+    ],
+    "rolling_window_minutes": 15,
+    "wait_threshold_minutes": 10,
+    "kerb_people_radius_m": 12,
+    "otp_window_minutes": 3,
+    "taxi_in_minutes": [4, 12],
+    "taxi_in_target_minutes": 8,
+    "taxi_out_minutes": [8, 20],
+    "taxi_out_target_minutes": 12,
+    "bags_per_passenger": {"domestic": 1.1, "international": 1.6},
+    "trolleys": {"total": 420, "collection_every_minutes": 15, "back_after_minutes": 10,
+                 "take_share": {"domestic": 0.25, "international": 0.6}},
+    "schedule_lead_minutes": 120
   }
 }

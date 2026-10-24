@@ -63,6 +63,19 @@ class RestProxyTests(unittest.TestCase):
         self.assertEqual(pub.stats()["failed"], 0)
         self.assertEqual(pub.stats()["delivered"], pub.stats()["queued"])
 
+    def test_kpi_topics_not_created_yet_the_other_feeds_still_go(self):
+        kpi = {t for k, t in self.config.topics.items() if k.startswith(("kpi.", "flight."))}
+        proxy = FakeProxy(set(self.config.topics.values()) - kpi)
+        pub = self.publisher(proxy)
+        now, logs = {"t": 0.0}, []
+        run_tracking_stream(ROOT / "config/passenger_tracking.json", pub, minutes=1,
+                            start=datetime(2026, 10, 9, 2, 30, tzinfo=timezone.utc),
+                            clock=lambda: now["t"], sleep=lambda s: now.update(t=now["t"] + s), log=logs.append)
+        sent = {url.rsplit("/", 1)[1] for method, url, *_ in proxy.requests if method == "POST"}
+        self.assertEqual(sent, set(self.config.topics.values()) - kpi)
+        self.assertTrue(any("KPI topics not created yet" in m for m in logs))
+        self.assertEqual(pub.stats()["failed"], 0)
+
     def test_missing_topics_are_reported_before_anything_is_sent(self):
         proxy = FakeProxy(["aiop-hyd-topic-kpi-event-v1"])
         pub = self.publisher(proxy)

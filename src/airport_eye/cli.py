@@ -70,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--speed", type=float, default=1.0, help="Live only: time compression; 12 = 5 s of simulation per wall second")
         p.add_argument("--scenario", help="Named scenario from the tracking config, e.g. 'peak' (busy at any hour)")
         p.add_argument("--feeds", default="all",
-                       help="Which feed groups to send: passengers, landside, airside (comma-separated) or all")
+                       help="Which feed groups to send: passengers, landside, airside, kpis (comma-separated) or all")
         airports.add_argument(p)
     pax_stream.add_argument("--config", default="config/poc.json", help="Kafka settings are read from this config")
     pax_stream.add_argument("--bootstrap", help="Override bootstrap servers (or set KAFKA_BOOTSTRAP_SERVERS)")

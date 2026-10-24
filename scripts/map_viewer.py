@@ -18,6 +18,7 @@ import argparse
 import json
 import math
 import mimetypes
+import os
 import threading
 import time
 from collections import deque
@@ -199,15 +200,27 @@ class TwinState:
 
 
 # -- sources -------------------------------------------------------------------
-def consume_kafka(state: TwinState, bootstrap: str, topics: list[str], from_beginning: bool, group: str) -> None:
+def rest_proxy_topics(path: str) -> list[str]:
+    """Topic names from config/rest_proxy.json, in dashboard feed order."""
+    named = json.loads(Path(path).read_text(encoding="utf-8"))["topics"]
+    missing = [feed for feed in FEEDS if feed not in named]
+    if missing:
+        raise SystemExit(f"{path} has no topic for: {', '.join(missing)}")
+    return [named[feed] for feed in FEEDS]
+
+
+def consume_kafka(state: TwinState, bootstrap: str, topics: list[str], from_beginning: bool, group: str,
+                  security: dict | None = None) -> None:
     from confluent_kafka import Consumer
 
     state.source = f"kafka {bootstrap}"
-    consumer = Consumer({"bootstrap.servers": bootstrap, "group.id": group,
-                         "auto.offset.reset": "earliest" if from_beginning else "latest",
-                         "enable.auto.commit": False, "allow.auto.create.topics": True,
-                         # the publisher may create the topics after the viewer starts
-                         "topic.metadata.refresh.interval.ms": 5000})
+    settings = {"bootstrap.servers": bootstrap, "group.id": group,
+                "auto.offset.reset": "earliest" if from_beginning else "latest",
+                "enable.auto.commit": False, "allow.auto.create.topics": False,
+                "topic.metadata.refresh.interval.ms": 5000}
+    if security:
+        settings.update(security)
+    consumer = Consumer(settings)
     consumer.subscribe(topics)
     while True:
         for msg in consumer.consume(num_messages=5000, timeout=1.0):
@@ -305,8 +318,19 @@ def layout_geojson(path: str) -> dict:
     for g in layout.get("gates", []):
         lon, lat = frame.to_wgs84(g["x"], g["y"])
         gates.append({"gate_id": g["gate_id"], "ref": g.get("osm_ref"), "flow": g["flow"], "lon": lon, "lat": lat, "floor": g["floor"]})
+    # Real floor plans where the airport sent one (Delhi L1: the DIAL plan), drawn under the zones
+    plans = {}
+    for floor, spec in layout.get("floor_plans", {}).items():
+        try:
+            plan = json.loads((Path(path).parent / spec["file"]).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        plans[floor] = {"type": "FeatureCollection", "features": [
+            {"type": "Feature", "geometry": f["geometry"], "properties": {"category": f["properties"]["category"]}}
+            for f in plan["features"]]}
     return {"type": "FeatureCollection", "features": features, "floors": layout["floors"],
-            "touchpoints": touchpoints, "gates": gates, "deg_per_m": per_m, "note": layout.get("_note", "")}
+            "touchpoints": touchpoints, "gates": gates, "deg_per_m": per_m, "note": layout.get("_note", ""),
+            "floor_plans": plans}
 
 
 def ground_geojson(path: str) -> dict | None:
@@ -378,8 +402,13 @@ def make_handler(state: TwinState, layout: dict | None, ground: dict | None = No
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--bootstrap", default="localhost:9092")
+    ap.add_argument("--bootstrap", default=os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"))
     ap.add_argument("--topic-prefix", default=PREFIX, help="topics are <prefix><event_type>")
+    ap.add_argument("--rest-proxy", help="read the live cluster topic names from this file, e.g. config/rest_proxy.json")
+    ap.add_argument("--security-protocol", default=os.environ.get("KAFKA_SECURITY_PROTOCOL"),
+                    help="e.g. SASL_SSL for the shared dev broker")
+    ap.add_argument("--sasl-mechanism", default=os.environ.get("KAFKA_SASL_MECHANISM", "SCRAM-SHA-512"))
+    ap.add_argument("--group", help="consumer group. The dev broker only allows names starting with ext-del-esri-")
     ap.add_argument("--from-beginning", action="store_true", help="read the topics from the start (default: newest only)")
     ap.add_argument("--simulate", action="store_true", help="run the terminal simulation in-process instead of reading Kafka")
     ap.add_argument("--speed", type=float, default=1.0, help="--simulate only: time compression")
@@ -399,7 +428,7 @@ def main() -> None:
     if args.airport != "hyd" and args.topic_prefix == PREFIX:
         args.topic_prefix = airports.AIRPORTS[args.airport]["kafka_prefix"] + ".esri."
 
-    state = TwinState()
+    state = TwinState(stale_ms=90_000 if args.rest_proxy else 20_000)
     try:
         layout = layout_geojson(args.zones)
     except (OSError, KeyError, ValueError):
@@ -409,9 +438,19 @@ def main() -> None:
     elif args.file:
         worker = threading.Thread(target=replay_file, args=(state, args.file, args.zones, args.replay_seconds), daemon=True)
     else:
-        topics = [args.topic_prefix + feed for feed in FEEDS]
-        group = f"map-viewer-{int(time.time())}"
-        worker = threading.Thread(target=consume_kafka, args=(state, args.bootstrap, topics, args.from_beginning, group),
+        topics = rest_proxy_topics(args.rest_proxy) if args.rest_proxy else [args.topic_prefix + feed for feed in FEEDS]
+        group = args.group or ("ext-del-esri-dashboard" if args.rest_proxy else f"map-viewer-{int(time.time())}")
+        security = None
+        if args.security_protocol:
+            username = os.environ.get("KAFKA_SASL_USERNAME")
+            password = os.environ.get("KAFKA_SASL_PASSWORD")
+            if not username or not password:
+                raise SystemExit("Set KAFKA_SASL_USERNAME and KAFKA_SASL_PASSWORD for the Kafka login")
+            security = {"security.protocol": args.security_protocol, "sasl.mechanisms": args.sasl_mechanism,
+                        "sasl.username": username, "sasl.password": password}
+        print("Reading:", ", ".join(topics))
+        worker = threading.Thread(target=consume_kafka,
+                                  args=(state, args.bootstrap, topics, args.from_beginning, group, security),
                                   daemon=True)
     worker.start()
     server = ThreadingHTTPServer((args.host, args.port), make_handler(state, layout, ground_geojson(args.ground),

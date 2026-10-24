@@ -300,6 +300,8 @@ def main(spec=None) -> None:
         "areas": {name: {"floor": floor, "polygons": polys} for name, (floor, polys) in spec.AREAS.items()},
         "walkways": {"nodes": nodes, "edges": edges},
     }
+    if hasattr(spec, "postprocess"):   # e.g. Delhi: fit the walkways to the DIAL floor plan
+        spec.postprocess(layout)
     # sanity: every touchpoint and node on a building floor should be inside a zone of its floor
     loose = [tp for tp, t in layout["touchpoints"].items()
              if not any(z["floor"] == t["floor"] and any(point_in_polygon(t["x"], t["y"], p) for p in z["polygons"])

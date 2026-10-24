@@ -247,5 +247,6 @@
  },
  "id_prefix": "SYN-DEL",
  "terminal_id": "DEL-T3",
- "kpi_id": "DEL-T3-JOURNEYS"
+ "kpi_id": "DEL-T3-JOURNEYS",
+ "emigration_before_security": true
 }

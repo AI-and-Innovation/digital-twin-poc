@@ -250,6 +250,10 @@
   var tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 20, maxNativeZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
   var tileErrors = 0;
   tiles.on("tileerror", function () { if (++tileErrors === 3) banner("Base map tiles need internet. The terminal and data still draw without them.", 8000); });
+  var planLayer = L.layerGroup().addTo(map), planRenderer = L.canvas({ pane: "zones", padding: 0.3 });
+  var PLAN_FILL = { corridor: "#f4f7fb", corridor_high: "#e9eef6", exterior: "#f7f7f7", road: "#c9c9c9", shop: "#f6d9a2",
+    "f&b": "#f3c29e", wc: "#bfe3da", private: "#dadada", office: "#d9d3ea", stairs: "#ecc2d8", lift: "#c9a3c4",
+    wall: "#5b6470", mini_wall: "#5b6470", glass: "#c4e5f5", glass_wall: "#9ccbe6", glass_wall_high: "#9ccbe6", garden: "#cfe6b4" };
   var buildingLayer = L.layerGroup().addTo(map), zoneLayer = L.layerGroup().addTo(map), heatLayer = L.layerGroup().addTo(map),
       trailLayer = L.layerGroup().addTo(map), touchLayer = L.layerGroup().addTo(map), paxLayer = L.layerGroup().addTo(map);
   var paxRenderer = L.canvas({ pane: "pax", padding: 0.3 }), heatRenderer = L.canvas({ pane: "heat", padding: 0.3 });
@@ -295,13 +299,19 @@
 
   // ---- layout ----
   function drawLayout() {
-    buildingLayer.clearLayers(); zoneLayer.clearLayers(); zonePolys = {};
+    buildingLayer.clearLayers(); zoneLayer.clearLayers(); planLayer.clearLayers(); zonePolys = {};
     if (!layout) return;
-    var bounds = null;
+    var bounds = null, plan = layout.floor_plans && layout.floor_plans[floor];
+    if (plan) {   // the airport's own floor plan for this level (Delhi departures: DIAL)
+      L.geoJSON(plan, { pane: "zones", renderer: planRenderer, interactive: false, style: function (f) {
+        var c = f.properties.category, fill = PLAN_FILL[c] || "#e3d8bd";
+        return { stroke: c === "wall" || c === "mini_wall", color: fill, weight: 0.5, fillColor: fill, fillOpacity: 0.9 };
+      } }).addTo(planLayer);
+    }
     layout.features.forEach(function (f) {
       var p = f.properties;
       if (p.kind === "building") {
-        var g = L.geoJSON(f, { pane: "zones", style: { color: "#1c2430", weight: 2, fillColor: "#ffffff", fillOpacity: 0.55 } }).addTo(buildingLayer);
+        var g = L.geoJSON(f, { pane: "zones", style: { color: "#1c2430", weight: 2, fillColor: "#ffffff", fillOpacity: plan ? 0 : 0.55 } }).addTo(buildingLayer);
         bounds = bounds ? bounds.extend(g.getBounds()) : g.getBounds();
       } else if (p.floor === floor) {
         var z = L.geoJSON(f, { pane: "zones", style: { color: "#3b5bb5", weight: 0.8, fillColor: "#e7f0fb", fillOpacity: 0 } })

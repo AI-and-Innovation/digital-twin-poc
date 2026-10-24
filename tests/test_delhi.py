@@ -11,7 +11,7 @@ from airport_eye.esri import ZoneLocator, to_esri_record
 from airport_eye.generators.passenger import generate_ticks, load_tracking
 from airport_eye.models import EventEnvelope
 from airport_eye.spatial import LocalFrame
-from airport_eye.tracking import FEEDS
+from airport_eye.tracking import FEEDS, KPI_FEEDS
 
 ROOT = Path(__file__).resolve().parents[1]
 DEL = ROOT / "config/del"
@@ -31,10 +31,13 @@ class DelhiTests(unittest.TestCase):
         cls.ticks = list(generate_ticks(quick, layout, inventory, START, START + timedelta(minutes=3)))
         cls.records = [r for _, records in cls.ticks for r in records]
 
-    def test_all_nine_feeds_with_delhi_ids_only(self):
+    def test_all_feeds_with_delhi_ids_only(self):
         types = Counter(r.event_type for r in self.records)
         for feed in FEEDS:
-            self.assertGreater(types[feed], 0, feed)
+            if feed in KPI_FEEDS:   # the AE-IT KPI cards are Hyderabad-only for now
+                self.assertEqual(types[feed], 0, feed)
+            else:
+                self.assertGreater(types[feed], 0, feed)
         minute = [records for when, records in self.ticks if when.second == 0][-1]
         for r in minute:
             EventEnvelope.model_validate(r.model_dump())
@@ -81,9 +84,27 @@ class DelhiTests(unittest.TestCase):
     def test_delhi_topics_are_separate_from_hyderabad(self):
         hyd = json.loads((ROOT / "config/rest_proxy.json").read_text())["topics"]
         dl = json.loads((DEL / "rest_proxy.json").read_text())["topics"]
-        self.assertEqual(set(dl), set(hyd))
+        self.assertEqual(set(dl), set(hyd) - set(KPI_FEEDS))
         self.assertTrue(all(t.startswith("aiop-del-topic-") for t in dl.values()))
         self.assertFalse(set(dl.values()) & set(hyd.values()))
+
+    def test_departures_level_fits_the_dial_floor_plan(self):
+        run = subprocess.run([sys.executable, str(ROOT / "scripts/del/check_dial_plan.py")],
+                             capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stdout)
+
+    def test_international_passengers_clear_emigration_before_security(self):
+        sim_cfg, layout, inventory, _ = load_tracking(DEL / "passenger_tracking.json")
+        self.assertTrue(sim_cfg.emigration_before_security)
+        seen = {}
+        for _, records in self.ticks:
+            for r in records:
+                tp = r.payload.get("touchpoint_id") if r.event_type == "passenger.position" else None
+                if tp and ("EMIGRATION" in tp or tp == "SYN-DEL-SECURITY-INT"):
+                    seen.setdefault(r.entity_id, []).append("E" if "EMIGRATION" in tp else "S")
+        orders = {"".join(dict.fromkeys(v)) for v in seen.values()}
+        self.assertIn("ES", orders)
+        self.assertNotIn("SE", orders)
 
     def test_builders_reproduce_the_committed_files(self):
         with tempfile.TemporaryDirectory() as out:

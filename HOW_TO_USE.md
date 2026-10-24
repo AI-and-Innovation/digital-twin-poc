@@ -101,6 +101,10 @@ activity (five more feeds; **Kerbside** and **Airside** tabs on the dashboard). 
 `--feeds passengers|landside|airside|all`.
 Details and every field: `docs/PASSENGER_TRACKING.md` (sections 5 and 5c).
 
+**AE-IT widget cards (Hyderabad):** the same simulation also publishes the finished KPI cards every minute (desk,
+curbside, airport / terminal overview) and each flight's milestones: four more feeds, `--feeds kpis`. See
+`docs/KPI_CARDS.md`; `scripts/make_checkpoint_kpis.py` writes one day of them as an Excel workbook.
+
 **Delhi (DIAL, IGI Terminal 3):** the same feeds for Delhi, kept separate in `config/del/`. Add `--airport del`
 to `pax-files`, `pax-stream` or `scripts/map_viewer.py`. See `docs/DELHI.md`.
 

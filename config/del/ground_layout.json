@@ -7923,145 +7923,145 @@
    },
    {
     "id": "a1",
-    "x": -163.0,
+    "x": -160.0,
     "y": -40.0,
     "side": "airside"
    },
    {
     "id": "a2",
-    "x": -163.0,
+    "x": -160.0,
     "y": -80.9,
     "side": "airside"
    },
    {
     "id": "a3",
-    "x": -163.0,
+    "x": -160.0,
     "y": -121.8,
     "side": "airside"
    },
    {
     "id": "a4",
-    "x": -163.0,
+    "x": -160.0,
     "y": -162.7,
     "side": "airside"
    },
    {
     "id": "a5",
-    "x": -163.0,
+    "x": -160.0,
     "y": -203.6,
     "side": "airside"
    },
    {
     "id": "a6",
-    "x": -163.0,
+    "x": -160.0,
     "y": -244.5,
     "side": "airside"
    },
    {
     "id": "a7",
-    "x": -163.0,
+    "x": -160.0,
     "y": -285.5,
     "side": "airside"
    },
    {
     "id": "a8",
-    "x": -163.0,
+    "x": -160.0,
     "y": -326.4,
     "side": "airside"
    },
    {
     "id": "a9",
-    "x": -163.0,
+    "x": -160.0,
     "y": -367.3,
     "side": "airside"
    },
    {
     "id": "a10",
-    "x": -163.0,
+    "x": -160.0,
     "y": -408.2,
     "side": "airside"
    },
    {
     "id": "a11",
-    "x": -163.0,
+    "x": -160.0,
     "y": -449.1,
     "side": "airside"
    },
    {
     "id": "a12",
-    "x": -163.0,
+    "x": -160.0,
     "y": -490.0,
     "side": "airside"
    },
    {
     "id": "a13",
-    "x": -227.0,
+    "x": -224.0,
     "y": -40.0,
     "side": "airside"
    },
    {
     "id": "a14",
-    "x": -227.0,
+    "x": -224.0,
     "y": -80.9,
     "side": "airside"
    },
    {
     "id": "a15",
-    "x": -227.0,
+    "x": -224.0,
     "y": -121.8,
     "side": "airside"
    },
    {
     "id": "a16",
-    "x": -227.0,
+    "x": -224.0,
     "y": -162.7,
     "side": "airside"
    },
    {
     "id": "a17",
-    "x": -227.0,
+    "x": -224.0,
     "y": -203.6,
     "side": "airside"
    },
    {
     "id": "a18",
-    "x": -227.0,
+    "x": -224.0,
     "y": -244.5,
     "side": "airside"
    },
    {
     "id": "a19",
-    "x": -227.0,
+    "x": -224.0,
     "y": -285.5,
     "side": "airside"
    },
    {
     "id": "a20",
-    "x": -227.0,
+    "x": -224.0,
     "y": -326.4,
     "side": "airside"
    },
    {
     "id": "a21",
-    "x": -227.0,
+    "x": -224.0,
     "y": -367.3,
     "side": "airside"
    },
    {
     "id": "a22",
-    "x": -227.0,
+    "x": -224.0,
     "y": -408.2,
     "side": "airside"
    },
    {
     "id": "a23",
-    "x": -227.0,
+    "x": -224.0,
     "y": -449.1,
     "side": "airside"
    },
    {
     "id": "a24",
-    "x": -227.0,
+    "x": -224.0,
     "y": -490.0,
     "side": "airside"
    },
@@ -28720,7 +28720,7 @@
    [
     "a1",
     "a42",
-    46.5,
+    47.6,
     25,
     "L0",
     "Apron service road (schematic)",
@@ -28730,7 +28730,7 @@
    [
     "a42",
     "a1",
-    46.5,
+    47.6,
     25,
     "L0",
     "Apron service road (schematic)",
@@ -28760,7 +28760,7 @@
    [
     "a13",
     "a25",
-    6.8,
+    4.6,
     25,
     "L0",
     "Apron service road (schematic)",
@@ -28770,7 +28770,7 @@
    [
     "a25",
     "a13",
-    6.8,
+    4.6,
     25,
     "L0",
     "Apron service road (schematic)",
@@ -28800,7 +28800,7 @@
    [
     "a25",
     "a13",
-    6.8,
+    4.6,
     25,
     "L0",
     "Apron service road (schematic)",
@@ -28810,7 +28810,7 @@
    [
     "a13",
     "a25",
-    6.8,
+    4.6,
     25,
     "L0",
     "Apron service road (schematic)",
@@ -28840,7 +28840,7 @@
    [
     "a42",
     "a1",
-    46.5,
+    47.6,
     25,
     "L0",
     "Apron service road (schematic)",
@@ -28850,7 +28850,7 @@
    [
     "a1",
     "a42",
-    46.5,
+    47.6,
     25,
     "L0",
     "Apron service road (schematic)",
@@ -29040,7 +29040,7 @@
    [
     "a122",
     "a16",
-    17.9,
+    20.2,
     25,
     "L0",
     "Apron service road (schematic)",
@@ -29050,7 +29050,7 @@
    [
     "a16",
     "a122",
-    17.9,
+    20.2,
     25,
     "L0",
     "Apron service road (schematic)",
@@ -29159,8 +29159,8 @@
    ],
    [
     "a139",
-    "a16",
-    26.3,
+    "a122",
+    26.9,
     25,
     "L0",
     "Apron service road (schematic)",
@@ -29168,9 +29168,9 @@
     null
    ],
    [
-    "a16",
+    "a122",
     "a139",
-    26.3,
+    26.9,
     25,
     "L0",
     "Apron service road (schematic)",
@@ -29630,96 +29630,96 @@
    "stand_id": "SYN-DEL-STAND-01",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-1",
-   "x": -327.2,
-   "y": -10.0,
+   "x": -312.4,
+   "y": -17.9,
    "flow": "int"
   },
   {
    "stand_id": "SYN-DEL-STAND-03",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-3",
-   "x": -393.6,
-   "y": 54.3,
+   "x": -395.6,
+   "y": 59.6,
    "flow": "int"
   },
   {
    "stand_id": "SYN-DEL-STAND-04",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-4",
-   "x": -447.2,
-   "y": 227.7,
+   "x": -510.6,
+   "y": 156.0,
    "flow": "int"
   },
   {
    "stand_id": "SYN-DEL-STAND-06",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-6",
-   "x": -508.9,
-   "y": 259.0,
+   "x": -571.5,
+   "y": 228.3,
    "flow": "int"
   },
   {
    "stand_id": "SYN-DEL-STAND-07",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-7",
-   "x": -502.4,
-   "y": 75.7,
+   "x": -463.8,
+   "y": 80.0,
    "flow": "int"
   },
   {
    "stand_id": "SYN-DEL-STAND-08",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-8",
-   "x": -578.8,
-   "y": 235.5,
+   "x": -548.9,
+   "y": 236.0,
    "flow": "int"
   },
   {
    "stand_id": "SYN-DEL-STAND-09",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-9",
-   "x": -584.7,
-   "y": 71.9,
+   "x": -603.7,
+   "y": 79.4,
    "flow": "int"
   },
   {
    "stand_id": "SYN-DEL-STAND-10",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-10",
-   "x": -662.1,
-   "y": 234.8,
+   "x": -588.9,
+   "y": 211.5,
    "flow": "int"
   },
   {
    "stand_id": "SYN-DEL-STAND-11",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-11",
-   "x": -673.6,
-   "y": 71.7,
+   "x": -662.5,
+   "y": 77.2,
    "flow": "int"
   },
   {
    "stand_id": "SYN-DEL-STAND-12",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-12",
-   "x": -724.9,
-   "y": 234.6,
+   "x": -694.4,
+   "y": 220.6,
    "flow": "int"
   },
   {
    "stand_id": "SYN-DEL-STAND-13",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-13",
-   "x": -761.1,
-   "y": 70.9,
+   "x": -783.3,
+   "y": 78.0,
    "flow": "int"
   },
   {
    "stand_id": "SYN-DEL-STAND-14",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-14",
-   "x": -813.2,
-   "y": 237.9,
+   "x": -825.6,
+   "y": 236.9,
    "flow": "int"
   },
   {
@@ -29727,71 +29727,71 @@
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-15",
    "x": -274.1,
-   "y": -79.2,
+   "y": -81.9,
    "flow": "int"
   },
   {
    "stand_id": "SYN-DEL-STAND-17",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-17",
-   "x": -275.1,
-   "y": -177.6,
+   "x": -235.3,
+   "y": -228.7,
    "flow": "int"
   },
   {
    "stand_id": "SYN-DEL-STAND-18",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-18",
-   "x": -110.8,
-   "y": -197.2,
+   "x": -113.8,
+   "y": -192.2,
    "flow": "int"
   },
   {
    "stand_id": "SYN-DEL-STAND-19",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-19",
-   "x": -275.6,
-   "y": -268.8,
+   "x": -221.8,
+   "y": -333.6,
    "flow": "int"
   },
   {
    "stand_id": "SYN-DEL-STAND-20",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-20",
-   "x": -112.4,
-   "y": -269.0,
+   "x": -118.4,
+   "y": -255.4,
    "flow": "int"
   },
   {
    "stand_id": "SYN-DEL-STAND-21",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-21",
-   "x": -274.3,
-   "y": -369.8,
+   "x": -229.8,
+   "y": -415.9,
    "flow": "int"
   },
   {
    "stand_id": "SYN-DEL-STAND-22",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-22",
-   "x": -113.5,
-   "y": -346.9,
+   "x": -114.0,
+   "y": -345.3,
    "flow": "int"
   },
   {
    "stand_id": "SYN-DEL-STAND-24",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-24",
-   "x": -113.3,
-   "y": -429.9,
+   "x": -113.8,
+   "y": -427.8,
    "flow": "int"
   },
   {
    "stand_id": "SYN-DEL-STAND-26",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-26",
-   "x": -123.3,
-   "y": -552.7,
+   "x": -114.4,
+   "y": -475.4,
    "flow": "int"
   },
   {
@@ -29806,8 +29806,8 @@
    "stand_id": "SYN-DEL-STAND-28",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-28",
-   "x": 116.8,
-   "y": -182.2,
+   "x": 162.0,
+   "y": -114.9,
    "flow": "dom"
   },
   {
@@ -29822,8 +29822,8 @@
    "stand_id": "SYN-DEL-STAND-30",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-30",
-   "x": 113.9,
-   "y": -271.4,
+   "x": 158.5,
+   "y": -196.5,
    "flow": "dom"
   },
   {
@@ -29838,72 +29838,72 @@
    "stand_id": "SYN-DEL-STAND-32",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-32",
-   "x": 115.1,
-   "y": -358.3,
+   "x": 164.6,
+   "y": -275.8,
    "flow": "dom"
   },
   {
    "stand_id": "SYN-DEL-STAND-33",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-33",
-   "x": 277.4,
-   "y": -390.3,
+   "x": 273.4,
+   "y": -405.7,
    "flow": "dom"
   },
   {
    "stand_id": "SYN-DEL-STAND-34",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-34",
-   "x": 115.1,
-   "y": -421.7,
+   "x": 145.4,
+   "y": -378.1,
    "flow": "dom"
   },
   {
    "stand_id": "SYN-DEL-STAND-36",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-36",
-   "x": 93.7,
-   "y": -521.2,
+   "x": 125.4,
+   "y": -541.4,
    "flow": "dom"
   },
   {
    "stand_id": "SYN-DEL-STAND-37",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-37",
-   "x": 293.8,
-   "y": -41.9,
+   "x": 297.6,
+   "y": -35.2,
    "flow": "dom"
   },
   {
    "stand_id": "SYN-DEL-STAND-39",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-39",
-   "x": 355.7,
-   "y": 20.1,
+   "x": 356.4,
+   "y": 22.9,
    "flow": "dom"
   },
   {
    "stand_id": "SYN-DEL-STAND-41",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-41",
-   "x": 418.7,
-   "y": 55.5,
+   "x": 360.0,
+   "y": 47.2,
    "flow": "dom"
   },
   {
    "stand_id": "SYN-DEL-STAND-42",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-42",
-   "x": 428.8,
-   "y": 230.8,
+   "x": 437.1,
+   "y": 226.4,
    "flow": "dom"
   },
   {
    "stand_id": "SYN-DEL-STAND-43",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-43",
-   "x": 447.6,
-   "y": 79.8,
+   "x": 502.6,
+   "y": 99.7,
    "flow": "dom"
   },
   {
@@ -29918,104 +29918,104 @@
    "stand_id": "SYN-DEL-STAND-45",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-45",
-   "x": 501.4,
-   "y": 80.1,
+   "x": 437.6,
+   "y": 120.6,
    "flow": "dom"
   },
   {
    "stand_id": "SYN-DEL-STAND-46",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-46",
-   "x": 476.7,
-   "y": 240.7,
+   "x": 474.3,
+   "y": 240.0,
    "flow": "dom"
   },
   {
    "stand_id": "SYN-DEL-STAND-47",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-47",
-   "x": 549.1,
-   "y": 80.3,
+   "x": 560.3,
+   "y": 85.7,
    "flow": "dom"
   },
   {
    "stand_id": "SYN-DEL-STAND-48",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-48",
-   "x": 529.1,
-   "y": 242.1,
+   "x": 540.0,
+   "y": 242.3,
    "flow": "dom"
   },
   {
    "stand_id": "SYN-DEL-STAND-49",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-49",
-   "x": 584.0,
-   "y": 83.2,
+   "x": 535.9,
+   "y": 114.6,
    "flow": "dom"
   },
   {
    "stand_id": "SYN-DEL-STAND-50",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-50",
-   "x": 588.6,
-   "y": 240.9,
+   "x": 548.3,
+   "y": 232.4,
    "flow": "dom"
   },
   {
    "stand_id": "SYN-DEL-STAND-51",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-51",
-   "x": 739.8,
-   "y": 296.0,
+   "x": 736.5,
+   "y": 250.1,
    "flow": "dom"
   },
   {
    "stand_id": "SYN-DEL-STAND-52",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-52",
-   "x": 632.9,
-   "y": 240.3,
+   "x": 626.1,
+   "y": 243.2,
    "flow": "dom"
   },
   {
    "stand_id": "SYN-DEL-STAND-53",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-53",
-   "x": 678.7,
-   "y": 81.7,
+   "x": 646.6,
+   "y": 99.4,
    "flow": "dom"
   },
   {
    "stand_id": "SYN-DEL-STAND-54",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-54",
-   "x": 659.4,
-   "y": 242.4,
+   "x": 656.1,
+   "y": 241.4,
    "flow": "dom"
   },
   {
    "stand_id": "SYN-DEL-STAND-55",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-55",
-   "x": 733.2,
-   "y": 83.1,
+   "x": 788.3,
+   "y": 110.6,
    "flow": "dom"
   },
   {
    "stand_id": "SYN-DEL-STAND-56",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-56",
-   "x": 714.8,
-   "y": 243.7,
+   "x": 719.7,
+   "y": 243.4,
    "flow": "dom"
   },
   {
    "stand_id": "SYN-DEL-STAND-58",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-58",
-   "x": 765.5,
-   "y": 242.1,
+   "x": 732.5,
+   "y": 241.4,
    "flow": "dom"
   },
   {
@@ -30030,8 +30030,8 @@
    "stand_id": "SYN-DEL-STAND-62",
    "osm_ref": null,
    "gate_id": "SYN-DEL-GATE-62",
-   "x": 846.7,
-   "y": 245.5,
+   "x": 896.4,
+   "y": 229.0,
    "flow": "dom"
   }
  ],

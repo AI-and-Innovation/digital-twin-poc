@@ -29,7 +29,7 @@ import json
 import math
 import random
 from collections import Counter, deque
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -44,6 +44,7 @@ from ..service_targets import ServiceTargets, nearest_rank, queue_attributes
 from ..spatial import WalkGraph, point_in_polygon
 from ..touchpoint_config import TouchpointInventory
 from .ground import GroundConfig, GroundSimulation
+from .kpi import KpiConfig, KpiTracker
 
 DEPARTURES = ("domestic_departure", "international_departure", "ga_departure")
 ARRIVALS = ("domestic_arrival", "international_arrival", "ga_arrival")
@@ -97,6 +98,8 @@ class TrackingConfig(Model):
     id_prefix: NonEmpty = "SYN-HYD"            # touchpoint, zone, kerb and gate ids: <prefix>-<name>
     terminal_id: NonEmpty = "HYD-MAIN"
     kpi_id: NonEmpty = "HYD-T1-JOURNEYS"
+    emigration_before_security: bool = False   # Delhi T3: international emigration desks come before security
+    kpi: KpiConfig | None = None                # AE-IT widget cards (kpi.* and flight.status feeds)
     seed: int
     layout_file: NonEmpty
     inventory_file: NonEmpty
@@ -212,6 +215,7 @@ class Queue:
         self.serving: dict[int, tuple[float, float, float, Passenger]] = {}  # channel -> (end, start, wait, pax)
         self.free_at = [-math.inf] * channels
         self.per_row = max(2, int(min(width, 30) / 0.75))
+        self.on_service: Callable[[int, float, float, float], None] | None = None   # (channel, start, end, wait)
 
     def slot(self, index: int) -> tuple[float, float]:
         row, col = divmod(index, self.per_row)
@@ -253,6 +257,8 @@ class Queue:
                         self.waiting.popleft()
                         wait = start - pax.joined
                         self.serving[channel] = (start + rng.uniform(*self.service), start, wait, pax)
+                        if self.on_service is not None:
+                            self.on_service(channel, start, self.serving[channel][0], wait)
                         stats.recent_starts.append((start, wait))
                         pax.activity = "in_service"
                         pax.x, pax.y = self.channel_point(channel)
@@ -273,6 +279,9 @@ class TerminalSimulation:
                  start: datetime, end: datetime):
         self.config, self.layout, self.inventory = config, layout, inventory
         self.P = config.id_prefix
+        # airside = past the last control: security when emigration comes first (Delhi), else emigration
+        self.airside_touchpoints = (AIRSIDE_TOUCHPOINTS - {"EMIGRATION", "EMIGRATION-EGATE", "EMIGRATION-PRM"}
+                                    | {"SECURITY-INT"}) if config.emigration_before_security else AIRSIDE_TOUCHPOINTS
         # Two streams: the schedule (flights, passengers, plans) and motion (walk targets,
         # service times). Neither depends on the end time, so a longer run of the same
         # start replays the same tracks.
@@ -338,6 +347,7 @@ class TerminalSimulation:
         # Vehicles: landside traffic brings and takes passengers; airside vehicles serve the flights.
         self.ground = (GroundSimulation(self, config._ground_layout, config.ground, f"{config.seed}:{start.isoformat()}")
                        if config._ground_layout is not None and config.ground is not None else None)
+        self.kpi = KpiTracker(self, config.kpi) if config.kpi is not None else None
 
     # -- schedule ------------------------------------------------------------
     # Flights are generated lazily, a little ahead of simulated time, so a live run
@@ -355,6 +365,8 @@ class TerminalSimulation:
             if stream is None or stream.per_hour <= 0:
                 continue
             lead = (stream.arrive_before_departure_minutes or (0, 0))[1] * 60 if journey in DEPARTURES else 0
+            if journey in ARRIVALS and self.config.kpi is not None:   # know the schedule before late flights land
+                lead = self.config.kpi.schedule_lead_minutes * 60
             self._streams[journey] = {"next": self.warm_start.timestamp() - 3600, "number": 0, "lead": lead}
             self._advance(journey)
 
@@ -387,8 +399,11 @@ class TerminalSimulation:
                                 rng.randint(*stream.passengers))
                 handled = self.ground is not None and journey in ("domestic_departure", "international_departure")
                 kerb_arrivals, arriving = [], []
+                use = None
                 if self.ground is not None and not journey.startswith("ga_"):
-                    self.ground.add_flight(flight)
+                    use = self.ground.add_flight(flight)
+                if self.kpi is not None:
+                    self.kpi.add_flight(flight, use)
                 for k in range(flight.passengers):
                     if journey in DEPARTURES:
                         at = t - rng.uniform(*stream.arrive_before_departure_minutes) * 60
@@ -453,10 +468,11 @@ class TerminalSimulation:
             if domestic:
                 plan.append(("tp", f"{self.P}-SECURITY-PRM" if prm else f"{self.P}-SECURITY-DOM"))
             else:
-                plan.append(("tp", f"{self.P}-SECURITY-INT"))
-                plan.append(("tp", f"{self.P}-EMIGRATION-PRM" if prm else
-                             f"{self.P}-EMIGRATION-EGATE" if rng.random() < s["emigration_egate"] else
-                             f"{self.P}-EMIGRATION"))
+                emigration = ("tp", f"{self.P}-EMIGRATION-PRM" if prm else
+                              f"{self.P}-EMIGRATION-EGATE" if rng.random() < s["emigration_egate"] else
+                              f"{self.P}-EMIGRATION")
+                security = ("tp", f"{self.P}-SECURITY-INT")
+                plan += [emigration, security] if cfg.emigration_before_security else [security, emigration]
             b = cfg.boarding
             opens = flight.time - b.opens_before_departure_minutes * 60
             closes = flight.time - b.closes_before_departure_minutes * 60
@@ -518,8 +534,10 @@ class TerminalSimulation:
             gate = self.gates[step[1]]
             angle = self.rng.uniform(0, 2 * math.pi)
             queue = self.queues[step[1]]
-            gx, gy = queue.x + queue.dx * 8, queue.y + queue.dy * 8  # holding area just inside the gate
-            self._walk_to(pax, gx + 5 * math.cos(angle), gy + 5 * math.sin(angle), gate["floor"])
+            hold = gate.get("holding")   # a layout fitted to a floor plan gives an open spot; else just inside
+            gx, gy, r = ((hold["x"], hold["y"], hold["radius_m"]) if hold else
+                         (queue.x + queue.dx * 8, queue.y + queue.dy * 8, 5.0))
+            self._walk_to(pax, gx + r * math.cos(angle), gy + r * math.sin(angle), gate["floor"])
         elif kind in ("dwell_until", "dwell_for"):
             pax.until = step[1] if kind == "dwell_until" else now + step[1]
             pax.activity, pax.touchpoint_id = step[2], step[3]
@@ -596,7 +614,8 @@ class TerminalSimulation:
                 if queue.queue_id in self.gates:
                     self._finish(pax, "boarded", ended)
                     continue
-                if queue.touchpoint_id.removeprefix(self.P + "-") in AIRSIDE_TOUCHPOINTS and pax.journey in DEPARTURES:
+                if queue.touchpoint_id.removeprefix(self.P + "-") in self.airside_touchpoints \
+                        and pax.journey in DEPARTURES:
                     pax.airside_at = ended
                     self.ev_airside.append((ended, (ended - pax.spawned_at) / 60))
                 pax.x, pax.y = queue.exit_point()
@@ -604,6 +623,8 @@ class TerminalSimulation:
                 self._next_step(pax, now)
         if self.ground is not None:
             self.ground.tick(now, dt)
+        if self.kpi is not None:
+            self.kpi.observe(now)
         report = self.active
         self.active = [p for p in self.active if not p.done]
         return report
@@ -614,6 +635,8 @@ class TerminalSimulation:
         pax.spawned_at = now
         self.active.append(pax)
         self._next_step(pax, now)
+        if self.kpi is not None:
+            self.kpi.on_release(pax, now, floor)
 
     def vehicle_records(self, when: datetime) -> list[EventEnvelope]:
         g = self.ground
@@ -767,6 +790,8 @@ class TerminalSimulation:
             touchpoints_congested=sum(p.get("status") == "congested" for p in tp_payloads),
         ).model_dump(mode="json")
         records.append(self._envelope("passenger.journey_kpi", self.config.kpi_id, when, payload))
+        if self.kpi is not None:
+            records += [self._envelope(kind, entity, when, p) for kind, entity, p in self.kpi.minute_records(now, when)]
         return records
 
 

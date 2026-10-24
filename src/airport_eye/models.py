@@ -345,6 +345,129 @@ class AircraftPosition(Model):
     stand_id: NonEmpty | None = None
 
 
+# ---- AE-IT widget cards (finished KPI values), one record per card per minute ---------------------------------
+class KpiCheckpoint(Model):
+    """One desk / lane / counter card: queue, processing, wait, happiness, wait trend."""
+
+    checkpoint_id: NonEmpty
+    touchpoint_id: NonEmpty
+    card: Literal["check_in", "security", "passport"]
+    desk_number: int = Field(ge=1)
+    desk_name: NonEmpty
+    floor: NonEmpty
+    lat: float
+    lon: float
+    window_start: AwareDatetime
+    window_end: AwareDatetime
+    desk_open: bool
+    queue_length: int = Field(ge=0)
+    avg_processing_time_seconds: float | None = Field(default=None, ge=0)
+    avg_wait_time_seconds: float | None = Field(default=None, ge=0)
+    happiness_index: Literal["Happy", "Neutral", "Unhappy"] | None = None
+    passengers_served: int = Field(ge=0)
+    rolling_window_minutes: float = Field(gt=0)
+    wait_threshold_minutes: float = Field(gt=0)
+    hour_avg_wait_minutes: float | None = Field(default=None, ge=0)
+    previous_hour_avg_wait_minutes: float | None = Field(default=None, ge=0)
+    today_hourly_avg_wait_minutes: list[float | None] = Field(min_length=24, max_length=24)
+
+
+class KpiCurbside(Model):
+    """Departures or arrivals curbside card."""
+
+    curbside_id: NonEmpty
+    name: NonEmpty
+    side: Literal["departures", "arrivals"]
+    floor: NonEmpty
+    lat: float
+    lon: float
+    window_start: AwareDatetime
+    window_end: AwareDatetime
+    people_count: int = Field(ge=0)
+    live_vehicle_count: int = Field(ge=0)
+    vehicles_this_hour: int = Field(ge=0)
+    vehicles_vs_previous_hour_pct: float | None = None
+    avg_dwell_seconds: float | None = Field(default=None, ge=0)
+    avg_dwell_vs_previous_hour_pct: float | None = None
+    this_hour_private_car: int = Field(ge=0)
+    this_hour_app_cab: int = Field(ge=0)
+    this_hour_taxi: int = Field(ge=0)
+    this_hour_bus: int = Field(ge=0)
+    trolleys_available: int | None = Field(default=None, ge=0)
+    trolleys_total: int | None = Field(default=None, ge=0)
+    today_hourly_vehicles: list[int | None] = Field(min_length=24, max_length=24)
+
+
+class KpiOverview(Model):
+    """Airport or terminal overview card, for the clock hour so far."""
+
+    overview_id: NonEmpty
+    scope: Literal["airport", "terminal"]
+    name: NonEmpty
+    lat: float
+    lon: float
+    window_start: AwareDatetime
+    window_end: AwareDatetime
+    hour_start: AwareDatetime
+    arrival_flights: int = Field(ge=0)
+    arrival_flights_scheduled: int = Field(ge=0)
+    arrival_vs_schedule_pct: float | None = None
+    departure_flights: int = Field(ge=0)
+    departure_flights_scheduled: int = Field(ge=0)
+    departure_vs_schedule_pct: float | None = None
+    stands_occupied: int = Field(ge=0)
+    stands_total: int = Field(ge=0)
+    ota_pct: float | None = Field(default=None, ge=0, le=100)
+    otd_pct: float | None = Field(default=None, ge=0, le=100)
+    avg_arrival_delay_minutes: float | None = None
+    avg_departure_delay_minutes: float | None = None
+    avg_taxi_in_minutes: float | None = Field(default=None, ge=0)
+    taxi_in_target_minutes: float | None = Field(default=None, gt=0)
+    taxi_in_vs_target_pct: float | None = None
+    avg_taxi_out_minutes: float | None = Field(default=None, ge=0)
+    taxi_out_target_minutes: float | None = Field(default=None, gt=0)
+    taxi_out_vs_target_pct: float | None = None
+    arrival_bags: int | None = Field(default=None, ge=0)
+    arrival_bags_threshold: int | None = Field(default=None, ge=0)
+    arrival_bags_vs_threshold_pct: float | None = None
+    departure_bags: int | None = Field(default=None, ge=0)
+    departure_bags_threshold: int | None = Field(default=None, ge=0)
+    departure_bags_vs_threshold_pct: float | None = None
+    arrival_pax_forecast: int = Field(ge=0)
+    arrival_pax_actual: int = Field(ge=0)
+    departure_pax_forecast: int = Field(ge=0)
+    departure_pax_actual: int = Field(ge=0)
+    today_hourly_arrival_pax_forecast: list[int] = Field(min_length=24, max_length=24)
+    today_hourly_arrival_pax_actual: list[int] = Field(min_length=24, max_length=24)
+    today_hourly_departure_pax_forecast: list[int] = Field(min_length=24, max_length=24)
+    today_hourly_departure_pax_actual: list[int] = Field(min_length=24, max_length=24)
+
+
+class FlightStatus(Model):
+    """A flight's schedule and milestones, sent when it is first known and at each milestone."""
+
+    flight_id: NonEmpty
+    direction: Literal["arrival", "departure"]
+    sector: Literal["domestic", "international"]
+    status: Literal["scheduled", "landed", "on_stand", "departed", "airborne"]
+    stand_id: NonEmpty | None = None
+    gate_id: NonEmpty | None = None
+    lat: float | None = None
+    lon: float | None = None
+    scheduled_time: AwareDatetime
+    estimated_time: AwareDatetime
+    landing_time: AwareDatetime | None = None       # ALDT
+    in_block_time: AwareDatetime | None = None      # AIBT = ATA
+    off_block_time: AwareDatetime | None = None     # AOBT = ATD
+    takeoff_time: AwareDatetime | None = None       # ATOT
+    delay_minutes: float | None = None              # ATA - STA / ATD - STD, once it happened
+    on_time: bool | None = None
+    taxi_minutes: float | None = Field(default=None, ge=0)
+    pax_forecast: int = Field(ge=0)
+    pax_actual: int = Field(ge=0)
+    bags: int = Field(ge=0)
+
+
 PAYLOAD_MODELS = {
     "registry.asset": AssetRegistry,
     "registry.point": PointRegistry,
@@ -362,6 +485,10 @@ PAYLOAD_MODELS = {
     "rms.assignment": RMSAssignment,
     "acdm.milestone": ACDMMilestone,
     "aircraft.position": AircraftPosition,
+    "kpi.checkpoint": KpiCheckpoint,
+    "kpi.curbside": KpiCurbside,
+    "kpi.overview": KpiOverview,
+    "flight.status": FlightStatus,
 }
 
 ENTITY_FIELDS = {
@@ -373,6 +500,8 @@ ENTITY_FIELDS = {
     "road.traffic": "road_id", "stand.activity": "stand_id",
     "aodb.flight": "flight_id", "rms.assignment": "assignment_id",
     "acdm.milestone": "flight_id", "aircraft.position": "aircraft_id",
+    "kpi.checkpoint": "checkpoint_id", "kpi.curbside": "curbside_id", "kpi.overview": "overview_id",
+    "flight.status": "flight_id",
 }
 
 

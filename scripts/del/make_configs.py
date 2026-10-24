@@ -97,8 +97,9 @@ def main() -> None:
     cfg.update(id_prefix="SYN-DEL", terminal_id="DEL-T3", kpi_id="DEL-T3-JOURNEYS",
                layout_file="terminal_layout.json", inventory_file="delhi_touchpoints.json",
                service_targets_file="service_targets.json", ground_layout_file="ground_layout.json",
-               output_directory="../../generated_data/del", flights=FLIGHTS)
+               output_directory="../../generated_data/del", flights=FLIGHTS, emigration_before_security=True)
     cfg["shares"]["domestic_city_checkin"] = 0.0
+    cfg.pop("kpi", None)   # the AE-IT KPI cards are Hyderabad-only for now
     cfg["open_channels"] = {f"SYN-DEL-{k}": v for k, v in OPEN.items()}
     peak = cfg["scenarios"]["peak"]
     peak["open_channels"] = {f"SYN-DEL-{k}": v for k, v in PEAK_OPEN.items()}

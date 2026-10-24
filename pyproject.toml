@@ -11,6 +11,7 @@ dependencies = ["pydantic>=2.8,<3"]
 
 [project.optional-dependencies]
 kafka = ["confluent-kafka>=2.5,<3"]
+kpi = ["openpyxl>=3.1,<4"]
 
 [project.scripts]
 airport-eye = "airport_eye.cli:main"

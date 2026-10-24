@@ -10,7 +10,11 @@
     "curb.occupancy": "aiop-hyd-topic-curb-occupancy-event-gold-v1",
     "road.traffic": "aiop-hyd-topic-road-traffic-event-gold-v1",
     "gse.position": "aiop-hyd-topic-gse-position-event-silver-v1",
-    "stand.activity": "aiop-hyd-topic-stand-activity-event-gold-v1"
+    "stand.activity": "aiop-hyd-topic-stand-activity-event-gold-v1",
+    "kpi.checkpoint": "aiop-hyd-topic-kpi-checkpoint-event-gold-v1",
+    "kpi.curbside": "aiop-hyd-topic-kpi-curbside-event-gold-v1",
+    "kpi.overview": "aiop-hyd-topic-kpi-overview-event-gold-v1",
+    "flight.status": "aiop-hyd-topic-flight-event-silver-v1"
   },
   "records_per_request": 500,
   "timeout_seconds": 30,

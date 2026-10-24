@@ -23,6 +23,7 @@ import heapq
 import math
 import random
 from collections import Counter, deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -291,6 +292,7 @@ class GroundSimulation:
                 self.fleet.append(v)
         self.next_bus = None
         self._bus_riders: dict[float, list] = {}
+        self.on_kerb: Callable[[str, Facility, Vehicle, float], None] | None = None   # ("stop" | "leave", ...)
 
     # -- helpers ---------------------------------------------------------------
     def _push(self, at: float, kind: str, payload: Any) -> None:
@@ -386,9 +388,9 @@ class GroundSimulation:
         self.stand_free[stand] = end
         return stand
 
-    def add_flight(self, flight) -> None:
+    def add_flight(self, flight) -> "StandUse | None":
         if flight.journey.startswith("ga_"):
-            return
+            return None
         t = flight.time
         buses = math.ceil(flight.passengers / 60)
         if flight.journey.endswith("arrival"):
@@ -419,6 +421,7 @@ class GroundSimulation:
         use.tasks = tasks
         self.stand_uses.append(use)
         self.tasks.extend(tasks)
+        return use
 
     # -- landside vehicle plans ---------------------------------------------------
     def _spawn_landside(self, kind: str, now: float, plan: list[tuple], party=None, passengers=None) -> Vehicle:
@@ -548,6 +551,8 @@ class GroundSimulation:
                 f.occupants[bay] = v
                 f.arrivals += 1
                 v.bay, v.stopped_at = bay, now
+                if self.on_kerb is not None:
+                    self.on_kerb("stop", f, v, now)
                 v.x, v.y = f.bay_point(bay)
                 v.level = f.floor
                 purpose = v.plan[v.step][2]
@@ -581,6 +586,8 @@ class GroundSimulation:
             f.departures += 1
             f.dwell_sum += now - (v.stopped_at or now)
             f.dwell_n += 1
+            if self.on_kerb is not None:
+                self.on_kerb("leave", f, v, now)
         if v.state == "at_stop" and v.vehicle_type == "bus":
             while self.bus_pickups and self.bus_pickups[0][0] <= now and len(v.passengers) < 60:
                 v.passengers.append(self.bus_pickups.popleft()[1])

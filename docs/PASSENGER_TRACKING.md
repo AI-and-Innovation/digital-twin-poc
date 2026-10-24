@@ -172,6 +172,13 @@ pattern:
 | Road traffic | `aiop-hyd-topic-road-traffic-event-gold-v1` | ~10 per minute |
 | Ground handling vehicles | `aiop-hyd-topic-gse-position-event-silver-v1` | ~19 msg/s at 5 s, ~3 msg/s at 30 s |
 | Aircraft stands | `aiop-hyd-topic-stand-activity-event-gold-v1` | 51 per minute |
+| KPI: desk / lane / counter cards | `aiop-hyd-topic-kpi-checkpoint-event-gold-v1` | 7 per minute |
+| KPI: curbside cards | `aiop-hyd-topic-kpi-curbside-event-gold-v1` | 2 per minute |
+| KPI: airport and terminal overview | `aiop-hyd-topic-kpi-overview-event-gold-v1` | 2 per minute |
+| Flight schedule and milestones | `aiop-hyd-topic-flight-event-silver-v1` | a few per minute |
+
+The four KPI feeds are the AE-IT widget cards; see `docs/KPI_CARDS.md`. Until their topics exist, `pax-stream
+--rest-proxy` skips them (with a warning) and sends the rest.
 
 ```bash
 export KAFKA_REST_USER=...        # never commit these
