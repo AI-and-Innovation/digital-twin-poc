@@ -110,8 +110,8 @@
       "bus": 0.08,
       "car_park": 0.08
     },
-    "party_size": [1, 3],
-    "dropoff_dwell_seconds": [60, 160],
+    "party_size": [1, 2],
+    "dropoff_dwell_seconds": [90, 200],
     "pickup_load_seconds": [30, 90],
     "pickup_arrives_after_landing_minutes": [20, 45],
     "cab_response_minutes": [3, 9],
