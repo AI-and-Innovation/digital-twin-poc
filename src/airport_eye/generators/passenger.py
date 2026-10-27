@@ -116,6 +116,7 @@ class TrackingConfig(Model):
     walking_speed_mps: tuple[float, float]
     reclaim_wait_minutes: tuple[float, float]
     arrivals_hall_dwell_minutes: tuple[float, float]
+    dwell_wander_pause_minutes: tuple[float, float] | None = None   # set: dwellers stroll the lounge, pausing this long
     scenarios: dict[str, Scenario] = Field(default_factory=dict)
     ground_layout_file: NonEmpty | None = None   # roads, kerbs, stands (config/ground_layout.json)
     ground: GroundConfig | None = None           # landside vehicles + kerbside, airside ground handling
@@ -185,6 +186,9 @@ class Passenger:
     zone: str = ""
     path: list[tuple[float, float, str]] = field(default_factory=list)
     until: float = 0.0
+    wander_area: str | None = None
+    pause_until: float = 0.0
+    wandering: bool = False
     moved: float = 0.0
     heading: float = 0.0
     sequence: int = 0
@@ -541,6 +545,9 @@ class TerminalSimulation:
         elif kind in ("dwell_until", "dwell_for"):
             pax.until = step[1] if kind == "dwell_until" else now + step[1]
             pax.activity, pax.touchpoint_id = step[2], step[3]
+            prev = pax.plan[pax.step - 1] if pax.step else None
+            pax.wander_area = prev[1] if step[2] == "dwelling" and prev and prev[0] == "area" else None
+            pax.pause_until = now + self._pause()
             if pax.until <= now:
                 pax.step += 1
                 self._next_step(pax, now)
@@ -552,7 +559,14 @@ class TerminalSimulation:
         pax.joined = now
         pax.activity, pax.touchpoint_id = "queuing", queue.touchpoint_id
 
+    def _pause(self) -> float:
+        pause = self.config.dwell_wander_pause_minutes
+        return self.rng.uniform(*pause) * 60 if pause else 0.0
+
     def _arrived(self, pax: Passenger, now: float) -> None:
+        if pax.wandering:   # reached a spot in the lounge: stand a while, then stroll on
+            pax.wandering, pax.activity, pax.pause_until = False, "dwelling", now + self._pause()
+            return
         step = pax.plan[pax.step]
         kind = step[0]
         if kind == "tp":
@@ -607,6 +621,11 @@ class TerminalSimulation:
             elif pax.activity in ("dwelling", "reclaim") and now >= pax.until:
                 pax.step += 1
                 self._next_step(pax, now)
+            elif pax.activity == "dwelling" and pax.wander_area and self.config.dwell_wander_pause_minutes \
+                    and now >= pax.pause_until:
+                pax.wandering = True
+                self._walk_to(pax, *self._point_in(pax.wander_area))
+                self._move(pax, dt)
             elif pax.activity == "at_gate" and now >= pax.until:
                 self._join(pax, self.queues[pax.plan[pax.step][1]], now)
         for queue in self.queues.values():
@@ -623,6 +642,11 @@ class TerminalSimulation:
                 self._next_step(pax, now)
         if self.ground is not None:
             self.ground.tick(now, dt)
+        for pax in self.active:   # started walking this tick (left a desk, got out of a car): take the first steps now
+            if not pax.done and pax.activity == "walking" and pax.moved == 0:
+                self._move(pax, dt)
+                if not pax.path:
+                    self._arrived(pax, now)
         if self.kpi is not None:
             self.kpi.observe(now)
         report = self.active

@@ -81,6 +81,7 @@
   "walking_speed_mps": [0.9, 1.5],
   "reclaim_wait_minutes": [5, 20],
   "arrivals_hall_dwell_minutes": [0, 4],
+  "dwell_wander_pause_minutes": [0.5, 2],
   "scenarios": {
     "peak": {
       "description": "Morning-peak load at any time of day, with a few lanes fewer open, so queues and alerts appear in a demo.",

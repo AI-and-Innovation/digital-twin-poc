@@ -127,6 +127,17 @@ class SimulationTests(unittest.TestCase):
                 checked += 1
         self.assertGreater(checked, 0)
 
+    def test_walking_passengers_move_and_dwellers_stroll(self):
+        positions = [r.payload for _, records in self.ticks for r in of_type(records)]
+        walking = [p for p in positions if p["activity"] == "walking"]
+        self.assertTrue(walking)
+        self.assertTrue(all(p["speed_mps"] > 0 for p in walking))
+        self.assertGreater(len(walking), sum(p["activity"] == "dwelling" for p in positions))
+        strolled = {p["passenger_id"] for p in walking if p["minutes_to_departure"] and p["touchpoint_id"] is None
+                    and p["indoor"]["zone_id"] != "SYN-HYD-ZONE-OUTSIDE"}
+        lounged = {p["passenger_id"] for p in positions if p["activity"] == "dwelling"}
+        self.assertTrue(strolled & lounged)
+
     def test_same_seed_and_start_give_the_same_tracks(self):
         _, _, _, again = short_run(minutes=1)
         key = lambda records: [(r.entity_id, r.payload["indoor"]["x"], r.payload["activity"]) for r in of_type(records)]

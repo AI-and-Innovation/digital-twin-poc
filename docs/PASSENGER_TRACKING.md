@@ -119,7 +119,7 @@ All four are flat JSON (the Esri record), keyed by `entity_id`, with `event_time
 |---|---|
 | `passenger_id` (= `entity_id`), `pnr_id`, `flight_id`, `gate_id` | Synthetic IDs |
 | `journey` | `domestic_departure`, `international_departure`, `domestic_arrival`, `international_arrival`, `ga_departure`, `ga_arrival` |
-| `activity` | `walking`, `queuing`, `in_service`, `dwelling`, `at_gate`, `reclaim`; the last record of a track is `boarded` or `exited` |
+| `activity` | `walking`, `queuing`, `in_service`, `dwelling`, `at_gate`, `reclaim`; the last record of a track is `boarded` or `exited`. A `walking` record always has `speed_mps` > 0. With `dwell_wander_pause_minutes` set in the config (Hyderabad: 0.5 to 2 minutes), departing passengers waiting airside stroll between random spots in the lounge, so about half of all records are `walking` |
 | `touchpoint_id` | Checkpoint being queued at or served by |
 | `longitude`, `latitude`, `floor`, `elevation_m` | Position (WGS84), floor (`L1`, `L0`) and the floor's height above ground (0 or 8 m) |
 | `indoor_x`, `indoor_y`, `indoor_z`, `indoor_zone_id`, `indoor_grid_id` | Terminal-local metres, zone, 5 m grid cell |
