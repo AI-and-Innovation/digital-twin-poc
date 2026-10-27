@@ -160,7 +160,9 @@ class SimulationTests(unittest.TestCase):
                          {"entry", "check_in", "security", "boarding", "immigration"})
         for tp_id, payload in last.items():
             self.assertGreaterEqual(payload["throughput_since_midnight"], first[tp_id]["throughput_since_midnight"])
-        self.assertEqual(first["SYN-HYD-SECURITY-DOM"]["service_channels"], 12)  # open lanes, not installed
+        open_lanes = load_tracking(TRACKING)[0].open_channels["SYN-HYD-SECURITY-DOM"]
+        self.assertEqual(first["SYN-HYD-SECURITY-DOM"]["service_channels"], open_lanes)  # open lanes, not installed
+        self.assertLess(open_lanes, 20)
 
     def test_esri_record_has_wgs84_from_local_xy(self):
         locator = ZoneLocator.from_layout(self.layout)

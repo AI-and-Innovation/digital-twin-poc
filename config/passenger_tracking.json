@@ -15,12 +15,12 @@
   "hourly_profile": [0.35, 0.25, 0.2, 0.25, 0.5, 0.9, 1.2, 1.3, 1.25, 1.1, 1.0, 0.95, 0.95, 1.0, 1.05, 1.1, 1.15, 1.2, 1.25, 1.2, 1.1, 0.9, 0.7, 0.5],
   "flights": {
     "domestic_departure": {
-      "per_hour": 8,
+      "per_hour": 12,
       "passengers": [60, 120],
       "arrive_before_departure_minutes": [60, 120]
     },
     "international_departure": {
-      "per_hour": 2,
+      "per_hour": 1,
       "passengers": [80, 150],
       "arrive_before_departure_minutes": [120, 200]
     },
@@ -29,7 +29,7 @@
       "passengers": [60, 120]
     },
     "international_arrival": {
-      "per_hour": 2,
+      "per_hour": 1,
       "passengers": [80, 150]
     },
     "ga_departure": {
@@ -55,14 +55,14 @@
     "passengers_per_bus": 60
   },
   "open_channels": {
-    "SYN-HYD-ENTRY": 4,
-    "SYN-HYD-DIGIYATRA-ENTRY": 1,
-    "SYN-HYD-CHECKIN-DOM": 11,
-    "SYN-HYD-CHECKIN-INT": 10,
-    "SYN-HYD-SECURITY-DOM": 12,
-    "SYN-HYD-SECURITY-INT": 5,
-    "SYN-HYD-EMIGRATION": 6,
-    "SYN-HYD-IMMIGRATION": 7
+    "SYN-HYD-ENTRY": 6,
+    "SYN-HYD-DIGIYATRA-ENTRY": 2,
+    "SYN-HYD-CHECKIN-DOM": 20,
+    "SYN-HYD-CHECKIN-INT": 6,
+    "SYN-HYD-SECURITY-DOM": 18,
+    "SYN-HYD-SECURITY-INT": 3,
+    "SYN-HYD-EMIGRATION": 4,
+    "SYN-HYD-IMMIGRATION": 5
   },
   "queue_feed_types": ["entry", "check_in", "security", "boarding", "immigration"],
   "kpi_rolling_minutes": 15,
@@ -87,30 +87,30 @@
       "flight_multiplier": 1.0,
       "hourly_profile": [1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25],
       "open_channels": {
-        "SYN-HYD-CHECKIN-DOM": 10,
-        "SYN-HYD-SECURITY-DOM": 11,
-        "SYN-HYD-IMMIGRATION": 8
+        "SYN-HYD-CHECKIN-DOM": 18,
+        "SYN-HYD-SECURITY-DOM": 16,
+        "SYN-HYD-IMMIGRATION": 4
       }
     }
   },
   "ground_layout_file": "ground_layout.json",
   "ground": {
     "departure_modes": {
-      "private_car": 0.4,
-      "app_cab": 0.28,
-      "taxi": 0.06,
-      "bus": 0.1,
-      "car_park": 0.16
+      "private_car": 0.46,
+      "app_cab": 0.32,
+      "taxi": 0.08,
+      "bus": 0.06,
+      "car_park": 0.08
     },
     "arrival_modes": {
-      "private_car": 0.36,
-      "app_cab": 0.3,
+      "private_car": 0.42,
+      "app_cab": 0.34,
       "taxi": 0.08,
-      "bus": 0.1,
-      "car_park": 0.16
+      "bus": 0.08,
+      "car_park": 0.08
     },
-    "party_size": [1, 4],
-    "dropoff_dwell_seconds": [40, 150],
+    "party_size": [1, 3],
+    "dropoff_dwell_seconds": [60, 160],
     "pickup_load_seconds": [30, 90],
     "pickup_arrives_after_landing_minutes": [20, 45],
     "cab_response_minutes": [3, 9],
