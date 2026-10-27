@@ -1,5 +1,5 @@
 {
-  "_note": "Synthetic passenger tracking for RGIA Terminal 1. Flight rates, passenger counts, shares, timings, the hourly profile (local hours 0-23, multiplies per_hour) and open_channels (lanes or counters open now, out of the installed number in the touchpoint inventory) are POC assumptions, not RGIA data. Volumes are laptop-sized (real RGIA scale, about 560 flights and 83,000 passengers a day as in GMR's FY2026 traffic report, so about 3,000-7,000 people in the terminal).",
+  "_note": "Synthetic passenger tracking for RGIA Terminal 1. Flight rates, passenger counts, shares, timings, the hourly profile (local hours 0-23, multiplies per_hour) and open_channels (lanes or counters open now, out of the installed number in the touchpoint inventory) are POC assumptions, not RGIA data. Volumes match real RGIA scale: about 560 flights and 83,000 passengers a day, as in GMR's FY2026 traffic report, so about 3,000-5,000 people in the terminal at busy times.",
   "start_time": "2026-10-09T08:00:00+05:30",
   "end_time": "2026-10-09T08:15:00+05:30",
   "interval_seconds": 5,
