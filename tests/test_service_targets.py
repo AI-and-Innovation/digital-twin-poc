@@ -32,10 +32,10 @@ class TargetTests(unittest.TestCase):
         self.assertIsNone(c["boarding"].target_wait_minutes)
 
     def test_queue_limit_follows_capacity_times_target(self):
-        # Security domestic: 20 slots, mean service 37.5 s -> 32 people/min; 5 min target -> 160
+        # Security domestic: 32 slots, mean service 37.5 s -> 51.2 people/min; 5 min target -> 256
         attrs = queue_attributes(self.targets, self.by_id["SYN-HYD-SECURITY-DOM"], queue_length=0, in_service=0,
                                  processed=0, interval_seconds=60, recent_waits=[])
-        self.assertEqual(attrs["queue_limit"], 160)
+        self.assertEqual(attrs["queue_limit"], 256)
         self.assertEqual(attrs["target_wait_seconds"], 300.0)
         self.assertEqual(attrs["aera_existing_wait_seconds"], 300.0)
         self.assertEqual(attrs["aera_proposed_wait_seconds"], 600.0)

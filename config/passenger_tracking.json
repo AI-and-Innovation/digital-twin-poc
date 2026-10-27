@@ -1,5 +1,5 @@
 {
-  "_note": "Synthetic passenger tracking for RGIA Terminal 1. Flight rates, passenger counts, shares, timings, the hourly profile (local hours 0-23, multiplies per_hour) and open_channels (lanes or counters open now, out of the installed number in the touchpoint inventory) are POC assumptions, not RGIA data. Volumes are laptop-sized (about 1,000-2,500 people in the terminal).",
+  "_note": "Synthetic passenger tracking for RGIA Terminal 1. Flight rates, passenger counts, shares, timings, the hourly profile (local hours 0-23, multiplies per_hour) and open_channels (lanes or counters open now, out of the installed number in the touchpoint inventory) are POC assumptions, not RGIA data. Volumes are laptop-sized (real RGIA scale, about 560 flights and 83,000 passengers a day as in GMR's FY2026 traffic report, so about 3,000-7,000 people in the terminal).",
   "start_time": "2026-10-09T08:00:00+05:30",
   "end_time": "2026-10-09T08:15:00+05:30",
   "interval_seconds": 5,
@@ -15,22 +15,22 @@
   "hourly_profile": [0.35, 0.25, 0.2, 0.25, 0.5, 0.9, 1.2, 1.3, 1.25, 1.1, 1.0, 0.95, 0.95, 1.0, 1.05, 1.1, 1.15, 1.2, 1.25, 1.2, 1.1, 0.9, 0.7, 0.5],
   "flights": {
     "domestic_departure": {
-      "per_hour": 12,
-      "passengers": [60, 120],
+      "per_hour": 11.6,
+      "passengers": [120, 180],
       "arrive_before_departure_minutes": [60, 120]
     },
     "international_departure": {
-      "per_hour": 1,
-      "passengers": [80, 150],
+      "per_hour": 1.6,
+      "passengers": [150, 250],
       "arrive_before_departure_minutes": [120, 200]
     },
     "domestic_arrival": {
-      "per_hour": 6,
-      "passengers": [60, 120]
+      "per_hour": 11.6,
+      "passengers": [120, 180]
     },
     "international_arrival": {
-      "per_hour": 1,
-      "passengers": [80, 150]
+      "per_hour": 1.6,
+      "passengers": [150, 250]
     },
     "ga_departure": {
       "per_hour": 0.5,
@@ -55,14 +55,14 @@
     "passengers_per_bus": 60
   },
   "open_channels": {
-    "SYN-HYD-ENTRY": 6,
-    "SYN-HYD-DIGIYATRA-ENTRY": 2,
-    "SYN-HYD-CHECKIN-DOM": 20,
-    "SYN-HYD-CHECKIN-INT": 6,
-    "SYN-HYD-SECURITY-DOM": 18,
-    "SYN-HYD-SECURITY-INT": 3,
-    "SYN-HYD-EMIGRATION": 4,
-    "SYN-HYD-IMMIGRATION": 5
+    "SYN-HYD-ENTRY": 12,
+    "SYN-HYD-DIGIYATRA-ENTRY": 4,
+    "SYN-HYD-CHECKIN-DOM": 28,
+    "SYN-HYD-CHECKIN-INT": 16,
+    "SYN-HYD-SECURITY-DOM": 28,
+    "SYN-HYD-SECURITY-INT": 8,
+    "SYN-HYD-EMIGRATION": 8,
+    "SYN-HYD-IMMIGRATION": 12
   },
   "queue_feed_types": ["entry", "check_in", "security", "boarding", "immigration"],
   "kpi_rolling_minutes": 15,
@@ -88,9 +88,9 @@
       "flight_multiplier": 1.0,
       "hourly_profile": [1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25],
       "open_channels": {
-        "SYN-HYD-CHECKIN-DOM": 18,
-        "SYN-HYD-SECURITY-DOM": 16,
-        "SYN-HYD-IMMIGRATION": 4
+        "SYN-HYD-CHECKIN-DOM": 26,
+        "SYN-HYD-SECURITY-DOM": 25,
+        "SYN-HYD-IMMIGRATION": 11
       }
     }
   },
@@ -110,8 +110,8 @@
       "bus": 0.08,
       "car_park": 0.08
     },
-    "party_size": [1, 2],
-    "dropoff_dwell_seconds": [90, 200],
+    "party_size": [1, 3],
+    "dropoff_dwell_seconds": [60, 160],
     "pickup_load_seconds": [30, 90],
     "pickup_arrives_after_landing_minutes": [20, 45],
     "cab_response_minutes": [3, 9],

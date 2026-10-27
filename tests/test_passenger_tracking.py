@@ -173,7 +173,8 @@ class SimulationTests(unittest.TestCase):
             self.assertGreaterEqual(payload["throughput_since_midnight"], first[tp_id]["throughput_since_midnight"])
         open_lanes = load_tracking(TRACKING)[0].open_channels["SYN-HYD-SECURITY-DOM"]
         self.assertEqual(first["SYN-HYD-SECURITY-DOM"]["service_channels"], open_lanes)  # open lanes, not installed
-        self.assertLess(open_lanes, 20)
+        installed = {t.touchpoint_id: t.simulation.service_channels for t in self.inventory.touchpoints}
+        self.assertLess(open_lanes, installed["SYN-HYD-SECURITY-DOM"])
 
     def test_esri_record_has_wgs84_from_local_xy(self):
         locator = ZoneLocator.from_layout(self.layout)

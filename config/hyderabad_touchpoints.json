@@ -76,7 +76,7 @@
       "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
       "simulation": {
         "arrival_rate_per_hour": 1800,
-        "service_channels": 8,
+        "service_channels": 14,
         "service_time_min_seconds": 8,
         "service_time_max_seconds": 20,
         "initial_queue_length": 5
@@ -139,7 +139,7 @@
       "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
       "simulation": {
         "arrival_rate_per_hour": 900,
-        "service_channels": 20,
+        "service_channels": 32,
         "service_time_min_seconds": 45,
         "service_time_max_seconds": 100,
         "initial_queue_length": 5
@@ -160,7 +160,7 @@
       "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
       "simulation": {
         "arrival_rate_per_hour": 400,
-        "service_channels": 14,
+        "service_channels": 18,
         "service_time_min_seconds": 60,
         "service_time_max_seconds": 150,
         "initial_queue_length": 5
@@ -307,7 +307,7 @@
       "notes": "Logical POC group; IDs, subdivision, rates and service channels are synthetic assumptions, not a physical asset inventory.",
       "simulation": {
         "arrival_rate_per_hour": 1600,
-        "service_channels": 20,
+        "service_channels": 32,
         "service_time_min_seconds": 20,
         "service_time_max_seconds": 55,
         "initial_queue_length": 5
